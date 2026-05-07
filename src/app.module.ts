@@ -4,12 +4,15 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AgreementsModule } from './agreements/agreements.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
+import { DisputesModule } from './disputes/disputes.module';
 import { PropertiesModule } from './properties/properties.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -31,6 +34,9 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     PropertiesModule,
+    AgreementsModule,
+    DisputesModule,
+    RentAdjustmentsModule,
   ],
   controllers: [AppController],
   providers: [
