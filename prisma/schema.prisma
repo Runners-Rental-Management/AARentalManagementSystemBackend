@@ -1,0 +1,491 @@
+generator client {
+  provider = "prisma-client-js"
+  output = "../node_modules/@prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  tenant
+  landlord
+  admin
+  dara_agent
+  system_admin
+}
+
+enum PropertyType {
+  apartment
+  house
+  condominium
+  villa
+}
+
+enum PropertyStatus {
+  pending_verification
+  available
+  rejected
+  rented
+}
+
+enum HomeCondition {
+  new_build
+  excellent
+  good
+  fair
+  needs_renovation
+}
+
+enum AgreementStatus {
+  draft
+  pending_tenant_signature
+  pending_verification
+  pending_dara_verification
+  active
+  extended
+  terminated
+  expired
+  rejected
+}
+
+enum DisputeStatus {
+  open
+  under_review
+  mediation
+  resolved
+  closed
+  escalated
+}
+
+enum ViolationType {
+  illegal_rent_increase
+  wrongful_eviction
+  maintenance_neglect
+  deposit_withholding
+  harassment
+  lease_violation
+  other
+}
+
+enum PriorityLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum RentAdjustmentStatus {
+  pending
+  approved
+  rejected
+  under_review
+}
+
+enum StrategyStatus {
+  draft
+  published
+  archived
+}
+
+enum NotificationType {
+  info
+  warning
+  success
+  error
+}
+
+enum NotificationCategory {
+  agreement
+  dispute
+  rent_adjustment
+  verification
+  system
+}
+
+enum PaymentStatus {
+  paid
+  pending
+  overdue
+  partial
+}
+
+enum PaymentMethod {
+  cbe_birr
+  telebirr
+  bank_transfer
+  mobile_money
+  cash
+  check
+}
+
+enum RelatedEntityType {
+  agreement
+  dispute
+  property
+  rent_adjustment
+}
+
+enum PenaltyType {
+  warning
+  fine
+  suspension
+  legal_action
+}
+
+enum PenaltyStatus {
+  issued
+  acknowledged
+  appealed
+  enforced
+  cancelled
+}
+
+enum SystemParameterCategory {
+  rental
+  compliance
+  system
+  notification
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  firstName         String
+  lastName          String
+  phone             String
+  role              UserRole
+  avatar            String?
+  isVerified        Boolean   @default(false)
+  address           String?
+  idNumber          String?
+  fatherName        String?
+  grandfatherName   String?
+  faydaNumber       String?   @unique
+  faydaVerified     Boolean   @default(false)
+  faydaVerifiedAt   DateTime?
+  passwordHash      String
+  lastLoginAt       DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  ownedProperties   Property[]         @relation("PropertyLandlord")
+  agreementsAsLandlord TenancyAgreement[] @relation("AgreementLandlord")
+  agreementsAsTenant   TenancyAgreement[] @relation("AgreementTenant")
+  reportedDisputes     Dispute[]          @relation("DisputeReporter")
+  respondedDisputes    Dispute[]          @relation("DisputeRespondent")
+  assignedDisputes     Dispute[]          @relation("DisputeAssignee")
+  rentAdjustments      RentAdjustment[]   @relation("AdjustmentLandlord")
+  receivedNotifications Notification[]
+  rentPaymentsAsPayer    RentPayment[]    @relation("PaymentPayer")
+  rentPaymentsAsRecipient RentPayment[]   @relation("PaymentRecipient")
+  uploadedDocuments      SupportingDocument[] @relation("DocumentUploader")
+  auditLogs              AuditLog[]
+  issuedPenalties        PenaltyNotice[] @relation("PenaltyIssuer")
+  penaltiesReceived      PenaltyNotice[] @relation("PenaltyIssuedTo")
+  updatedSystemParameters SystemParameter[]
+  authSessions           AuthSession[]
+
+  @@index([role, createdAt])
+  @@index([isVerified, role])
+  @@index([deletedAt])
+}
+
+model Property {
+  id            String         @id @default(cuid())
+  title         String
+  address       String
+  subCity       String
+  woreda        String
+  propertyType  PropertyType
+  bedrooms      Int
+  bathrooms     Int
+  area          Decimal        @db.Decimal(10, 2)
+  amenities     String[]
+  monthlyRent   Decimal        @db.Decimal(12, 2)
+  status        PropertyStatus @default(pending_verification)
+  landlordId    String
+  description   String         @db.Text
+  images        String[]
+  homeCondition HomeCondition?
+  verifiedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  landlord      User           @relation("PropertyLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
+  agreements    TenancyAgreement[]
+  disputes      Dispute[]
+  documents     SupportingDocument[]
+
+  @@index([landlordId, status])
+  @@index([subCity, status, monthlyRent])
+  @@index([propertyType, status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TenancyAgreement {
+  id                 String          @id @default(cuid())
+  propertyId         String
+  landlordId         String
+  tenantId           String
+  monthlyRent        Decimal         @db.Decimal(12, 2)
+  advancePayment     Decimal         @db.Decimal(12, 2)
+  startDate          DateTime
+  endDate            DateTime
+  status             AgreementStatus @default(draft)
+  signedAt           DateTime?
+  tenantSignedAt     DateTime?
+  landlordSignedAt   DateTime?
+  verifiedAt         DateTime?
+  terminatedAt       DateTime?
+  terminationReason  String?         @db.Text
+  utilities          String[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  property           Property        @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  landlord           User            @relation("AgreementLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
+  tenant             User            @relation("AgreementTenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  disputes           Dispute[]
+  rentAdjustments    RentAdjustment[]
+  rentPayments       RentPayment[]
+  penaltyNotices     PenaltyNotice[]
+  documents          SupportingDocument[]
+
+  @@index([propertyId, status])
+  @@index([landlordId, status])
+  @@index([tenantId, status])
+  @@index([startDate, endDate])
+  @@index([createdAt])
+}
+
+model Dispute {
+  id             String        @id @default(cuid())
+  agreementId    String
+  propertyId     String
+  reporterId     String
+  respondentId   String
+  violationType  ViolationType
+  title          String
+  description    String        @db.Text
+  evidence       String[]
+  status         DisputeStatus @default(open)
+  priority       PriorityLevel @default(medium)
+  resolution     String?       @db.Text
+  assignedToId   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  resolvedAt     DateTime?
+  agreement      TenancyAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  property       Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reporter       User             @relation("DisputeReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  respondent     User             @relation("DisputeRespondent", fields: [respondentId], references: [id], onDelete: Restrict)
+  assignedTo     User?            @relation("DisputeAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  penaltyNotices PenaltyNotice[]
+  documents      SupportingDocument[]
+
+  @@index([agreementId, status])
+  @@index([propertyId, status])
+  @@index([reporterId, createdAt])
+  @@index([respondentId, createdAt])
+  @@index([assignedToId, status])
+  @@index([priority, status])
+}
+
+model RentAdjustment {
+  id                   String               @id @default(cuid())
+  agreementId          String
+  landlordId           String
+  currentRent          Decimal              @db.Decimal(12, 2)
+  proposedRent         Decimal              @db.Decimal(12, 2)
+  increasePercentage   Decimal              @db.Decimal(5, 2)
+  maxAllowedPercentage Decimal              @db.Decimal(5, 2)
+  reason               String               @db.Text
+  status               RentAdjustmentStatus @default(pending)
+  reviewedAt           DateTime?
+  reviewedBy           String?
+  reviewNotes          String?              @db.Text
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  agreement            TenancyAgreement     @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  landlord             User                 @relation("AdjustmentLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
+  documents            SupportingDocument[]
+
+  @@index([agreementId, status])
+  @@index([landlordId, createdAt])
+  @@index([status, createdAt])
+}
+
+model PricingStrategy {
+  id                       String           @id @default(cuid())
+  title                    String
+  description              String           @db.Text
+  maxAnnualIncreasePercent Decimal          @db.Decimal(5, 2)
+  effectiveFrom            DateTime
+  effectiveTo              DateTime
+  status                   StrategyStatus   @default(draft)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  publishedAt              DateTime?
+  subCityRules             SubCityRule[]
+
+  @@index([status, effectiveFrom, effectiveTo])
+}
+
+model SubCityRule {
+  id               String         @id @default(cuid())
+  pricingStrategyId String
+  subCity          String
+  maxRentPerSqm    Decimal        @db.Decimal(12, 2)
+  adjustmentFactor Decimal        @db.Decimal(6, 3)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  pricingStrategy  PricingStrategy @relation(fields: [pricingStrategyId], references: [id], onDelete: Cascade)
+
+  @@unique([pricingStrategyId, subCity])
+  @@index([subCity])
+}
+
+model Notification {
+  id        String               @id @default(cuid())
+  userId    String
+  title     String
+  message   String               @db.Text
+  type      NotificationType
+  category  NotificationCategory
+  isRead    Boolean              @default(false)
+  link      String?
+  createdAt DateTime             @default(now())
+  readAt    DateTime?
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([category, createdAt])
+}
+
+model RentPayment {
+  id            String        @id @default(cuid())
+  agreementId   String
+  payerId       String
+  recipientId   String
+  amount        Decimal       @db.Decimal(12, 2)
+  dueDate       DateTime
+  paidDate      DateTime?
+  status        PaymentStatus @default(pending)
+  method        PaymentMethod?
+  reference     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  agreement     TenancyAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  payer         User          @relation("PaymentPayer", fields: [payerId], references: [id], onDelete: Restrict)
+  recipient     User          @relation("PaymentRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+
+  @@index([agreementId, dueDate])
+  @@index([payerId, status])
+  @@index([recipientId, status])
+  @@index([status, dueDate])
+}
+
+model SupportingDocument {
+  id               String            @id @default(cuid())
+  uploaderId       String
+  relatedEntityType RelatedEntityType
+  relatedEntityId  String
+  fileName         String
+  fileType         String
+  fileSize         Int
+  storageKey       String            @unique
+  description      String?           @db.Text
+  uploadedAt       DateTime          @default(now())
+  uploader         User              @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  agreementId      String?
+  disputeId        String?
+  propertyId       String?
+  rentAdjustmentId String?
+  agreement        TenancyAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
+  dispute          Dispute?          @relation(fields: [disputeId], references: [id], onDelete: SetNull)
+  property         Property?         @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  rentAdjustment   RentAdjustment?   @relation(fields: [rentAdjustmentId], references: [id], onDelete: SetNull)
+
+  @@index([uploaderId, uploadedAt])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([agreementId])
+  @@index([disputeId])
+  @@index([propertyId])
+  @@index([rentAdjustmentId])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  userId     String
+  action     String
+  entity     String
+  entityId   String
+  details    String    @db.Text
+  ipAddress  String
+  userAgent  String?
+  timestamp  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, timestamp])
+  @@index([entity, entityId, timestamp])
+  @@index([action, timestamp])
+}
+
+model PenaltyNotice {
+  id          String        @id @default(cuid())
+  issuedToId  String
+  issuedById  String
+  disputeId   String?
+  agreementId String?
+  type        PenaltyType
+  reason      String        @db.Text
+  amount      Decimal?      @db.Decimal(12, 2)
+  status      PenaltyStatus @default(issued)
+  issuedAt    DateTime      @default(now())
+  deadline    DateTime?
+  updatedAt   DateTime      @updatedAt
+  issuedTo    User          @relation("PenaltyIssuedTo", fields: [issuedToId], references: [id], onDelete: Restrict)
+  issuedBy    User          @relation("PenaltyIssuer", fields: [issuedById], references: [id], onDelete: Restrict)
+  dispute     Dispute?      @relation(fields: [disputeId], references: [id], onDelete: SetNull)
+  agreement   TenancyAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
+
+  @@index([issuedToId, status])
+  @@index([issuedById, issuedAt])
+  @@index([disputeId])
+  @@index([agreementId])
+}
+
+model SystemParameter {
+  id          String                  @id @default(cuid())
+  key         String                  @unique
+  label       String
+  value       String                  @db.Text
+  category    SystemParameterCategory
+  description String                  @db.Text
+  updatedAt   DateTime                @updatedAt
+  updatedById String
+  updatedBy   User                    @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([category])
+}
+
+model AuthSession {
+  id                 String   @id @default(cuid())
+  userId             String
+  refreshTokenHash   String
+  jti                String   @unique
+  userAgent          String?
+  ipAddress          String?
+  isRevoked          Boolean  @default(false)
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRevoked])
+  @@index([expiresAt])
+}
