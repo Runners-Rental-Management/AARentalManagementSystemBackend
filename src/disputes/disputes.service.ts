@@ -92,28 +92,26 @@ export class DisputesService {
     const skip = (query.page - 1) * query.pageSize;
     const take = query.pageSize;
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.dispute.findMany({
-        where,
-        skip,
-        take,
-        orderBy: [{ createdAt: 'desc' }],
-        include: {
-          agreement: { select: { id: true, status: true } },
-          property: { select: { id: true, title: true, address: true } },
-          reporter: {
-            select: { id: true, firstName: true, lastName: true, role: true },
-          },
-          respondent: {
-            select: { id: true, firstName: true, lastName: true, role: true },
-          },
-          assignedTo: {
-            select: { id: true, firstName: true, lastName: true, role: true },
-          },
+    const items = await this.prisma.dispute.findMany({
+      where,
+      skip,
+      take,
+      orderBy: [{ createdAt: 'desc' }],
+      include: {
+        agreement: { select: { id: true, status: true } },
+        property: { select: { id: true, title: true, address: true } },
+        reporter: {
+          select: { id: true, firstName: true, lastName: true, role: true },
         },
-      }),
-      this.prisma.dispute.count({ where }),
-    ]);
+        respondent: {
+          select: { id: true, firstName: true, lastName: true, role: true },
+        },
+        assignedTo: {
+          select: { id: true, firstName: true, lastName: true, role: true },
+        },
+      },
+    });
+    const total = await this.prisma.dispute.count({ where });
 
     return {
       items,

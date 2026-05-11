@@ -96,27 +96,25 @@ export class RentAdjustmentsService {
     const skip = (query.page - 1) * query.pageSize;
     const take = query.pageSize;
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.rentAdjustment.findMany({
-        where,
-        skip,
-        take,
-        orderBy: [{ createdAt: 'desc' }],
-        include: {
-          agreement: {
-            select: {
-              id: true,
-              status: true,
-              property: { select: { id: true, title: true, address: true } },
-            },
-          },
-          landlord: {
-            select: { id: true, firstName: true, lastName: true, role: true },
+    const items = await this.prisma.rentAdjustment.findMany({
+      where,
+      skip,
+      take,
+      orderBy: [{ createdAt: 'desc' }],
+      include: {
+        agreement: {
+          select: {
+            id: true,
+            status: true,
+            property: { select: { id: true, title: true, address: true } },
           },
         },
-      }),
-      this.prisma.rentAdjustment.count({ where }),
-    ]);
+        landlord: {
+          select: { id: true, firstName: true, lastName: true, role: true },
+        },
+      },
+    });
+    const total = await this.prisma.rentAdjustment.count({ where });
 
     return {
       items,

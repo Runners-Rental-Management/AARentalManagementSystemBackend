@@ -12,12 +12,12 @@ export class PrismaService
     const connectionString = configService.getOrThrow<string>('DATABASE_URL');
     if (connectionString.startsWith('prisma+postgres://')) {
       throw new Error(
-        'DATABASE_URL uses prisma+postgres://, which is not supported by the runtime pg adapter. Use a postgresql:// or postgres:// connection string for Nest runtime.',
+        'DATABASE_URL uses prisma+postgres://, which is not supported by Prisma Client runtime. Use a postgresql:// or postgres:// connection string for Nest runtime.',
       );
     }
-
-    const adapter = new PrismaPg({ connectionString });
-    super({ adapter });
+    super({
+      adapter: new PrismaPg(connectionString),
+    });
   }
 
   async onModuleInit() {

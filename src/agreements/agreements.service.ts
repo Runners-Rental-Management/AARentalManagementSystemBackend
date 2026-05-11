@@ -96,22 +96,20 @@ export class AgreementsService {
     const skip = (query.page - 1) * query.pageSize;
     const take = query.pageSize;
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.tenancyAgreement.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          property: {
-            select: { id: true, title: true, address: true, subCity: true },
-          },
-          landlord: { select: { id: true, firstName: true, lastName: true } },
-          tenant: { select: { id: true, firstName: true, lastName: true } },
+    const items = await this.prisma.tenancyAgreement.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        property: {
+          select: { id: true, title: true, address: true, subCity: true },
         },
-      }),
-      this.prisma.tenancyAgreement.count({ where }),
-    ]);
+        landlord: { select: { id: true, firstName: true, lastName: true } },
+        tenant: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    const total = await this.prisma.tenancyAgreement.count({ where });
 
     return {
       items,

@@ -17,6 +17,58 @@ import { ListPropertiesDto } from './dto/list-properties.dto';
 export class PropertiesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findPublic(query: ListPropertiesDto) {
+    const where: Prisma.PropertyWhereInput = {
+      deletedAt: null,
+      status: PropertyStatus.available,
+      ...(query.propertyType ? { propertyType: query.propertyType } : {}),
+      ...(query.subCity
+        ? { subCity: { equals: query.subCity, mode: 'insensitive' } }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { title: { contains: query.search, mode: 'insensitive' } },
+              { address: { contains: query.search, mode: 'insensitive' } },
+              { subCity: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+      ...(query.minRent
+        ? { monthlyRent: { gte: new Prisma.Decimal(query.minRent) } }
+        : {}),
+      ...(query.maxRent
+        ? { monthlyRent: { lte: new Prisma.Decimal(query.maxRent) } }
+        : {}),
+    };
+
+    const skip = (query.page - 1) * query.pageSize;
+    const take = query.pageSize;
+
+    const items = await this.prisma.property.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        landlord: {
+          select: { id: true, firstName: true, lastName: true, role: true },
+        },
+      },
+    });
+    const total = await this.prisma.property.count({ where });
+
+    return {
+      items,
+      meta: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+        totalPages: Math.ceil(total / query.pageSize),
+      },
+    };
+  }
+
   async create(userId: string, role: UserRole, dto: CreatePropertyDto) {
     if (role !== UserRole.landlord) {
       throw new ForbiddenException('Only landlords can register properties');
@@ -111,20 +163,18 @@ export class PropertiesService {
     const skip = (query.page - 1) * query.pageSize;
     const take = query.pageSize;
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.property.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          landlord: {
-            select: { id: true, firstName: true, lastName: true, role: true },
-          },
+    const items = await this.prisma.property.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        landlord: {
+          select: { id: true, firstName: true, lastName: true, role: true },
         },
-      }),
-      this.prisma.property.count({ where }),
-    ]);
+      },
+    });
+    const total = await this.prisma.property.count({ where });
 
     return {
       items,

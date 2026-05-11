@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { ListPropertiesDto } from './dto/list-properties.dto';
@@ -9,6 +10,12 @@ import { PropertiesService } from './properties.service';
 @Controller('properties')
 export class PropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
+
+  @Public()
+  @Get('public')
+  listPublic(@Query() query: ListPropertiesDto) {
+    return this.propertiesService.findPublic(query);
+  }
 
   @Get()
   list(
