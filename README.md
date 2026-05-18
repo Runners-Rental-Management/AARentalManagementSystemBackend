@@ -96,3 +96,9 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Docker (repo root)
+
+From `AARentalManagemnetSystem`: `docker compose build` then `docker compose up`. The API listens on port **3000**. Postgres is included; `PRISMA_DB_PUSH=1` in compose runs `prisma db push` on each API start (fine for local Docker; use migrations for real deployments).
+
+**Environment variables** (also validated at startup): `PORT` (default 3000), `DATABASE_URL` (`postgresql://` for the Nest runtime), `CORS_ORIGIN` (comma-separated origins, e.g. `http://localhost:45000` for the Next dev server), `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` (each min 32 characters), optional `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `THROTTLE_TTL_MS`, `THROTTLE_LIMIT`. Set `PRISMA_DB_PUSH=0` to skip schema sync on container start.

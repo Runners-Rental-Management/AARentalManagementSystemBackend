@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsString, MinLength } from 'class-validator';
+import { authUserRoles, type AuthUserRole } from './auth-user-role';
 
 export class LoginDto {
   @IsEmail()
@@ -7,4 +8,7 @@ export class LoginDto {
   @IsString()
   @MinLength(8)
   password: string;
+
+  @IsIn(authUserRoles)
+  role: AuthUserRole;
 }

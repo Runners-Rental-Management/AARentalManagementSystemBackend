@@ -1,10 +1,21 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { OnboardingOptions } from '../auth/onboarding-options.decorator';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
+import { SkipOnboarding } from '../auth/skip-onboarding.decorator';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { ListPropertiesDto } from './dto/list-properties.dto';
+import { ReviewPropertyDto } from './dto/review-property.dto';
 import { PropertiesService } from './properties.service';
 
 @Controller('properties')
@@ -17,6 +28,7 @@ export class PropertiesController {
     return this.propertiesService.findPublic(query);
   }
 
+  @SkipOnboarding()
   @Get()
   list(
     @CurrentUser('sub') userId: string,
@@ -26,6 +38,7 @@ export class PropertiesController {
     return this.propertiesService.findAll(userId, role, query);
   }
 
+  @SkipOnboarding()
   @Get(':id')
   getById(
     @Param('id') id: string,
@@ -36,6 +49,7 @@ export class PropertiesController {
   }
 
   @Roles(UserRole.landlord)
+  @OnboardingOptions({ requireProperty: false })
   @Post()
   create(
     @CurrentUser('sub') userId: string,
@@ -43,5 +57,15 @@ export class PropertiesController {
     @Body() dto: CreatePropertyDto,
   ) {
     return this.propertiesService.create(userId, role, dto);
+  }
+
+  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Patch(':id/review')
+  review(
+    @Param('id') id: string,
+    @CurrentUser('role') role: UserRole,
+    @Body() dto: ReviewPropertyDto,
+  ) {
+    return this.propertiesService.reviewProperty(id, role, dto);
   }
 }

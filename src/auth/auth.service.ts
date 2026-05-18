@@ -44,7 +44,7 @@ export class AuthService {
         lastName: dto.lastName,
         phone: dto.phone,
         passwordHash,
-        role: dto.role ?? UserRole.tenant,
+        role: dto.role as UserRole,
       },
       select: {
         id: true,
@@ -96,6 +96,11 @@ export class AuthService {
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
     const user = await this.validateUser(dto.email, dto.password);
+
+    if (user.role !== dto.role) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const tokens = await this.issueTokens(user.id, user.email, user.role, {
       ipAddress,
       userAgent,

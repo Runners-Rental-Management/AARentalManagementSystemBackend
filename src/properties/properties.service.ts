@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   AgreementStatus,
@@ -12,6 +13,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { ListPropertiesDto } from './dto/list-properties.dto';
+import { ReviewPropertyDto } from './dto/review-property.dto';
 
 @Injectable()
 export class PropertiesService {
@@ -236,5 +238,60 @@ export class PropertiesService {
     }
 
     return property;
+  }
+
+  async reviewProperty(id: string, role: UserRole, dto: ReviewPropertyDto) {
+    const isAuthority =
+      role === UserRole.admin ||
+      role === UserRole.system_admin ||
+      role === UserRole.dara_agent;
+    if (!isAuthority) {
+      throw new ForbiddenException('Only authority users can review properties');
+    }
+
+    const property = await this.prisma.property.findUnique({
+      where: { id },
+      select: { id: true, status: true, deletedAt: true },
+    });
+
+    if (!property || property.deletedAt) {
+      throw new NotFoundException('Property not found');
+    }
+
+    if (property.status !== PropertyStatus.pending_verification) {
+      throw new UnprocessableEntityException(
+        'Only pending properties can be reviewed',
+      );
+    }
+
+    if (
+      dto.status !== PropertyStatus.available &&
+      dto.status !== PropertyStatus.rejected
+    ) {
+      throw new UnprocessableEntityException(
+        'Review status must be available or rejected',
+      );
+    }
+
+    return this.prisma.property.update({
+      where: { id },
+      data: {
+        status: dto.status,
+        verifiedAt:
+          dto.status === PropertyStatus.available ? new Date() : null,
+      },
+      include: {
+        landlord: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
   }
 }

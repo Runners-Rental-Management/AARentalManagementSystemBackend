@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AgreementsModule } from './agreements/agreements.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { OnboardingGuard } from './auth/guards/onboarding.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
 import { DisputesModule } from './disputes/disputes.module';
@@ -52,6 +53,10 @@ import { UsersModule } from './users/users.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: OnboardingGuard,
     },
   ],
 })

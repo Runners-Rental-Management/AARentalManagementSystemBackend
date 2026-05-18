@@ -1,19 +1,7 @@
-import {
-  IsEmail,
-  IsIn,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsIn, IsString, MinLength } from 'class-validator';
+import { authUserRoles, type AuthUserRole } from './auth-user-role';
 
-const allowedRoles = [
-  'tenant',
-  'landlord',
-  'admin',
-  'dara_agent',
-  'system_admin',
-] as const;
-export type RegisterUserRole = (typeof allowedRoles)[number];
+export type RegisterUserRole = AuthUserRole;
 
 export class RegisterDto {
   @IsString()
@@ -32,7 +20,6 @@ export class RegisterDto {
   @IsString()
   phone: string;
 
-  @IsIn(allowedRoles)
-  @IsOptional()
-  role?: RegisterUserRole;
+  @IsIn(authUserRoles)
+  role: AuthUserRole;
 }

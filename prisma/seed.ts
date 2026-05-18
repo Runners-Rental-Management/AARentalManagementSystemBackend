@@ -1,5 +1,10 @@
 import 'dotenv/config';
-import { PrismaClient, PropertyStatus, PropertyType, UserRole } from '@prisma/client';
+import {
+  PrismaClient,
+  PropertyStatus,
+  PropertyType,
+  UserRole,
+} from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
@@ -48,6 +53,11 @@ async function seedUsers() {
       phone: '+251900000002',
       role: UserRole.landlord,
       isVerified: true,
+      faydaNumber: '1234567890123456',
+      faydaVerified: true,
+      faydaVerifiedAt: new Date(),
+      fatherName: 'Kebede',
+      grandfatherName: 'Tesfaye',
       passwordHash,
     },
     create: {
@@ -57,6 +67,11 @@ async function seedUsers() {
       phone: '+251900000002',
       role: UserRole.landlord,
       isVerified: true,
+      faydaNumber: '1234567890123456',
+      faydaVerified: true,
+      faydaVerifiedAt: new Date(),
+      fatherName: 'Kebede',
+      grandfatherName: 'Tesfaye',
       passwordHash,
     },
   });
@@ -69,6 +84,11 @@ async function seedUsers() {
       phone: '+251900000003',
       role: UserRole.tenant,
       isVerified: true,
+      faydaNumber: '9876543210987654',
+      faydaVerified: true,
+      faydaVerifiedAt: new Date(),
+      fatherName: 'Haile',
+      grandfatherName: 'Mekonnen',
       passwordHash,
     },
     create: {
@@ -78,6 +98,11 @@ async function seedUsers() {
       phone: '+251900000003',
       role: UserRole.tenant,
       isVerified: true,
+      faydaNumber: '9876543210987654',
+      faydaVerified: true,
+      faydaVerifiedAt: new Date(),
+      fatherName: 'Haile',
+      grandfatherName: 'Mekonnen',
       passwordHash,
     },
   });
@@ -148,9 +173,99 @@ async function seedProperties(landlordId: string) {
   }
 }
 
+async function seedSystemParameters(adminId: string) {
+  const params = [
+    {
+      key: 'max_annual_rent_increase_percent',
+      label: 'Max Annual Rent Increase (%)',
+      value: '7',
+      category: 'rental' as const,
+      description:
+        'Maximum percentage a landlord may increase rent per year across all agreements.',
+    },
+    {
+      key: 'dispute_resolution_days',
+      label: 'Dispute Resolution Deadline (days)',
+      value: '30',
+      category: 'compliance' as const,
+      description:
+        'Number of days within which an authority agent must resolve a dispute.',
+    },
+    {
+      key: 'agreement_verification_days',
+      label: 'Agreement Verification Deadline (days)',
+      value: '7',
+      category: 'compliance' as const,
+      description:
+        'Number of days within which an authority agent must review a pending agreement.',
+    },
+    {
+      key: 'property_verification_days',
+      label: 'Property Verification Deadline (days)',
+      value: '14',
+      category: 'compliance' as const,
+      description:
+        'Number of days within which an authority agent must verify a newly listed property.',
+    },
+    {
+      key: 'max_advance_payment_months',
+      label: 'Max Advance Payment (months)',
+      value: '2',
+      category: 'rental' as const,
+      description:
+        'Maximum number of months rent a landlord may collect as advance payment.',
+    },
+    {
+      key: 'notification_email_enabled',
+      label: 'Email Notifications Enabled',
+      value: 'true',
+      category: 'notification' as const,
+      description: 'Whether to send email notifications for key events.',
+    },
+    {
+      key: 'notification_sms_enabled',
+      label: 'SMS Notifications Enabled',
+      value: 'false',
+      category: 'notification' as const,
+      description: 'Whether to send SMS notifications for key events.',
+    },
+    {
+      key: 'system_maintenance_mode',
+      label: 'Maintenance Mode',
+      value: 'false',
+      category: 'system' as const,
+      description:
+        'When set to true, the platform shows a maintenance notice to non-admin users.',
+    },
+    {
+      key: 'min_lease_duration_months',
+      label: 'Minimum Lease Duration (months)',
+      value: '6',
+      category: 'rental' as const,
+      description: 'Minimum number of months for a tenancy agreement.',
+    },
+    {
+      key: 'max_lease_duration_months',
+      label: 'Maximum Lease Duration (months)',
+      value: '36',
+      category: 'rental' as const,
+      description: 'Maximum number of months for a tenancy agreement.',
+    },
+  ];
+
+  for (const param of params) {
+    await prisma.systemParameter.upsert({
+      where: { key: param.key },
+      update: { value: param.value, updatedById: adminId },
+      create: { ...param, updatedById: adminId },
+    });
+  }
+}
+
 async function main() {
-  const { landlord } = await seedUsers();
+  const { landlord, admin } = await seedUsers();
   await seedProperties(landlord.id);
+  await seedSystemParameters(admin.id);
   console.log('Seed completed successfully.');
   console.log('Default login password for seeded users: Passw0rd!234');
 }
