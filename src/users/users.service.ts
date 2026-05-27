@@ -1,9 +1,41 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListAuditLogsDto } from './dto/list-audit-logs.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+
+const tenantPublicProfileSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  phone: true,
+  role: true,
+  isVerified: true,
+  address: true,
+  fatherName: true,
+  grandfatherName: true,
+  faydaNumber: true,
+  faydaVerified: true,
+  faydaVerifiedAt: true,
+  createdAt: true,
+  _count: {
+    select: {
+      agreementsAsTenant: true,
+    },
+  },
+} satisfies Prisma.UserSelect;
+
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 7) return '***';
+  return `${phone.slice(0, Math.min(8, phone.length))} *** ***`;
+}
+
+function maskFaydaNumber(faydaNumber: string): string {
+  if (faydaNumber.length < 8) return '****';
+  return `${faydaNumber.slice(0, 4)} **** **** ${faydaNumber.slice(-4)}`;
+}
 
 @Injectable()
 export class UsersService {
@@ -134,6 +166,73 @@ export class UsersService {
 
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  private formatTenantPublicProfile(
+    user: Prisma.UserGetPayload<{ select: typeof tenantPublicProfileSelect }>,
+  ) {
+    const fullName = [user.firstName, user.fatherName, user.grandfatherName]
+      .filter(Boolean)
+      .join(' ');
+
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fatherName: user.fatherName,
+      grandfatherName: user.grandfatherName,
+      fullName: fullName || `${user.firstName} ${user.lastName}`.trim(),
+      phone: user.phone,
+      maskedPhone: maskPhone(user.phone),
+      address: user.address,
+      role: user.role,
+      isVerified: user.isVerified,
+      faydaVerified: user.faydaVerified,
+      faydaVerifiedAt: user.faydaVerifiedAt,
+      maskedFaydaNumber: user.faydaNumber
+        ? maskFaydaNumber(user.faydaNumber)
+        : null,
+      createdAt: user.createdAt,
+      agreementCountAsTenant: user._count.agreementsAsTenant,
+    };
+  }
+
+  async lookupTenantByFayda(faydaNumber: string) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        deletedAt: null,
+        role: UserRole.tenant,
+        faydaVerified: true,
+        faydaNumber,
+      },
+      select: tenantPublicProfileSelect,
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        'No Fayda-verified tenant found with this number',
+      );
+    }
+
+    return this.formatTenantPublicProfile(user);
+  }
+
+  async getTenantPublicProfile(tenantId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: tenantId,
+        deletedAt: null,
+        role: UserRole.tenant,
+        faydaVerified: true,
+      },
+      select: tenantPublicProfileSelect,
+    });
+
+    if (!user) {
+      throw new NotFoundException('Tenant profile not found');
+    }
+
+    return this.formatTenantPublicProfile(user);
   }
 
   async getDashboardStats() {

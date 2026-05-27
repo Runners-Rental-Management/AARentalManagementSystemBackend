@@ -12,6 +12,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { AgreementsService } from './agreements.service';
 import { CreateAgreementDto } from './dto/create-agreement.dto';
+import { CreateTenantAgreementDto } from './dto/create-tenant-agreement.dto';
 import { ListAgreementsDto } from './dto/list-agreements.dto';
 import { ReviewAgreementDto } from './dto/review-agreement.dto';
 
@@ -23,6 +24,15 @@ export class AgreementsController {
   @Post()
   create(@CurrentUser('sub') userId: string, @Body() dto: CreateAgreementDto) {
     return this.agreementsService.createAsLandlord(userId, dto);
+  }
+
+  @Roles(UserRole.tenant)
+  @Post('tenant-request')
+  tenantRequest(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: CreateTenantAgreementDto,
+  ) {
+    return this.agreementsService.tenantRequestAsTenant(userId, dto);
   }
 
   @Get()
@@ -47,6 +57,12 @@ export class AgreementsController {
   @Patch(':id/tenant-sign')
   tenantSign(@Param('id') id: string, @CurrentUser('sub') userId: string) {
     return this.agreementsService.tenantSign(id, userId);
+  }
+
+  @Roles(UserRole.landlord)
+  @Patch(':id/landlord-sign')
+  landlordSign(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+    return this.agreementsService.landlordSignAgreement(id, userId);
   }
 
   @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)

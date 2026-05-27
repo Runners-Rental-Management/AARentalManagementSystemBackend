@@ -68,4 +68,14 @@ export class PropertiesController {
   ) {
     return this.propertiesService.reviewProperty(id, role, dto);
   }
+
+  @Roles(UserRole.landlord)
+  @Patch(':id/post-to-explore')
+  postToExplore(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+  ) {
+    return this.propertiesService.postToExplore(id, userId, role);
+  }
 }

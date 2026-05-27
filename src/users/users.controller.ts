@@ -14,6 +14,7 @@ import { Roles } from '../auth/roles.decorator';
 import { SkipOnboarding } from '../auth/skip-onboarding.decorator';
 import { ListAuditLogsDto } from './dto/list-audit-logs.dto';
 import { ListUsersDto } from './dto/list-users.dto';
+import { LookupTenantDto } from './dto/lookup-tenant.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateSystemParameterDto } from './dto/update-system-parameter.dto';
 import { VerifyFaydaDto } from './dto/verify-fayda.dto';
@@ -40,6 +41,20 @@ export class UsersController {
   @Post('me/fayda/verify')
   verifyFayda(@CurrentUser('sub') userId: string, @Body() dto: VerifyFaydaDto) {
     return this.onboarding.verifyFayda(userId, dto);
+  }
+
+  // ─── Landlord: tenant directory ──────────────────────────────────────────
+
+  @Roles(UserRole.landlord)
+  @Get('tenants/lookup')
+  lookupTenant(@Query() query: LookupTenantDto) {
+    return this.usersService.lookupTenantByFayda(query.faydaNumber);
+  }
+
+  @Roles(UserRole.landlord)
+  @Get('tenants/:id')
+  getTenantProfile(@Param('id') id: string) {
+    return this.usersService.getTenantPublicProfile(id);
   }
 
   // ─── Admin endpoints ─────────────────────────────────────────────────────

@@ -1,11 +1,24 @@
 import { AgreementStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class ListAgreementsDto {
   @IsOptional()
   @IsEnum(AgreementStatus)
   status?: AgreementStatus;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
 
   @IsOptional()
   @Type(() => Number)

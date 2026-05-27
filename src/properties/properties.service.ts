@@ -23,6 +23,7 @@ export class PropertiesService {
     const where: Prisma.PropertyWhereInput = {
       deletedAt: null,
       status: PropertyStatus.available,
+      isPostedToExplore: true,
       ...(query.propertyType ? { propertyType: query.propertyType } : {}),
       ...(query.subCity
         ? { subCity: { equals: query.subCity, mode: 'insensitive' } }
@@ -293,5 +294,52 @@ export class PropertiesService {
         },
       },
     });
+  }
+
+  async postToExplore(id: string, userId: string, role: UserRole) {
+    if (role !== UserRole.landlord) {
+      throw new ForbiddenException(
+        'Only landlords can post properties to explore',
+      );
+    }
+
+    const property = await this.prisma.property.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        landlordId: true,
+        status: true,
+        deletedAt: true,
+        isPostedToExplore: true,
+      },
+    });
+
+    if (!property || property.deletedAt) {
+      throw new NotFoundException('Property not found');
+    }
+
+    if (property.landlordId !== userId) {
+      throw new ForbiddenException('You cannot post this property');
+    }
+
+    if (property.status !== PropertyStatus.available) {
+      throw new UnprocessableEntityException(
+        'Only approved available properties can be posted to explore',
+      );
+    }
+
+    if (property.isPostedToExplore) {
+      return this.findOne(id, userId, role);
+    }
+
+    await this.prisma.property.update({
+      where: { id },
+      data: {
+        isPostedToExplore: true,
+        postedToExploreAt: new Date(),
+      },
+    });
+
+    return this.findOne(id, userId, role);
   }
 }

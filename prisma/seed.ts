@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import {
+  AgreementStatus,
+  Prisma,
   PrismaClient,
   PropertyStatus,
   PropertyType,
@@ -124,6 +126,8 @@ async function seedProperties(landlordId: string) {
       amenities: ['Parking', 'Guard/Security', 'Water Tank', 'Elevator'],
       monthlyRent: 15000,
       status: PropertyStatus.available,
+      isPostedToExplore: true,
+      postedToExploreAt: new Date(),
       description:
         'A modern apartment in the heart of Bole with great amenities and easy access to transportation.',
       images: [
@@ -262,9 +266,52 @@ async function seedSystemParameters(adminId: string) {
   }
 }
 
+async function seedAgreements(landlordId: string, tenantId: string) {
+  const property = await prisma.property.findFirst({
+    where: {
+      landlordId,
+      title: 'Modern 2BR Apartment in Bole',
+      deletedAt: null,
+    },
+    select: { id: true, monthlyRent: true },
+  });
+  if (!property) return;
+
+  const existing = await prisma.tenancyAgreement.findFirst({
+    where: {
+      propertyId: property.id,
+      status: AgreementStatus.pending_verification,
+    },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const startDate = new Date();
+  const endDate = new Date(startDate);
+  endDate.setFullYear(endDate.getFullYear() + 2);
+  const monthlyRent = Number(property.monthlyRent);
+
+  await prisma.tenancyAgreement.create({
+    data: {
+      propertyId: property.id,
+      landlordId,
+      tenantId,
+      monthlyRent: new Prisma.Decimal(monthlyRent),
+      advancePayment: new Prisma.Decimal(monthlyRent * 2),
+      startDate,
+      endDate,
+      utilities: ['Water', 'Electricity', 'Parking'],
+      status: AgreementStatus.pending_verification,
+      tenantSignedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      landlordSignedAt: new Date(),
+    },
+  });
+}
+
 async function main() {
-  const { landlord, admin } = await seedUsers();
+  const { landlord, admin, tenant } = await seedUsers();
   await seedProperties(landlord.id);
+  await seedAgreements(landlord.id, tenant.id);
   await seedSystemParameters(admin.id);
   console.log('Seed completed successfully.');
   console.log('Default login password for seeded users: Passw0rd!234');
