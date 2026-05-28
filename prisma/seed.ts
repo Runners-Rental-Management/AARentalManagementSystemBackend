@@ -7,8 +7,8 @@ import {
   PropertyType,
   UserRole,
 } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
+import { createPrismaAdapter } from '../src/prisma/create-prisma-adapter';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -20,8 +20,13 @@ if (databaseUrl.startsWith('prisma+postgres://')) {
   );
 }
 
-const adapter = new PrismaPg({ connectionString: databaseUrl });
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient({
+  adapter: createPrismaAdapter({
+    databaseUrl,
+    databaseUrlLocal: process.env.DATABASE_URL_LOCAL,
+    useNeonDirect: process.env.NEON_USE_DIRECT === '1',
+  }),
+});
 
 const ADDIS_SUB_CITIES = [
   'Addis Ketema',

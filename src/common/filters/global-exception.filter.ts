@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 
 @Catch()
@@ -21,7 +22,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let message: string | string[] = 'Internal server error';
     let error = 'InternalServerError';
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof Prisma.PrismaClientInitializationError) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      message =
+        'Database is unavailable. Start PostgreSQL (docker compose up postgres) or check DATABASE_URL in .env.';
+      error = 'DatabaseUnavailable';
+    } else if (
+      exception instanceof Prisma.PrismaClientKnownRequestError &&
+      (exception.code === 'P1001' ||
+        exception.code === 'P1017' ||
+        exception.message.includes('Server has closed the connection'))
+    ) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      message =
+        'Database connection lost. Retry in a moment, or use local Postgres: docker compose up -d postgres';
+      error = 'DatabaseConnectionLost';
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
       if (typeof exceptionResponse === 'string') {

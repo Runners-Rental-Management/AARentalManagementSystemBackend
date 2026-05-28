@@ -8,6 +8,11 @@ export const envValidationSchema = Joi.object({
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgresql', 'postgres', 'prisma+postgres'] })
     .required(),
+  /** When set in development, overrides DATABASE_URL (e.g. local Docker Postgres). */
+  DATABASE_URL_LOCAL: Joi.string()
+    .uri({ scheme: ['postgresql', 'postgres'] })
+    .optional(),
+  NEON_USE_DIRECT: Joi.string().valid('0', '1').default('0'),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_REFRESH_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_TTL_SECONDS: Joi.number().integer().min(60).default(86400),
