@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -12,6 +13,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
 import { PropertiesModule } from './properties/properties.module';
 import { PricePredictionModule } from './price-prediction/price-prediction.module';
+import { TaxationModule } from './modules/taxation/taxation.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.module';
 import { UsersModule } from './users/users.module';
@@ -29,6 +31,7 @@ import { UploadModule } from './upload/upload.module';
         abortEarly: false,
       },
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
         ttl: Number(process.env.THROTTLE_TTL_MS ?? 60000),
@@ -45,6 +48,7 @@ import { UploadModule } from './upload/upload.module';
     PaymentsModule,
     UploadModule,
     PricePredictionModule,
+    TaxationModule,
   ],
   controllers: [AppController],
   providers: [

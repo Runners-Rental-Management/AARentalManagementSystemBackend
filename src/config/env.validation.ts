@@ -29,4 +29,12 @@ export const envValidationSchema = Joi.object({
   CLOUDINARY_API_KEY: Joi.string().required(),
   CLOUDINARY_API_SECRET: Joi.string().required(),
   CLOUDINARY_FOLDER: Joi.string().default('house'),
+  RENTAL_INCOME_TAX_RATE: Joi.number().min(0).max(1).default(0.15),
+  TAX_AUTHORITY_NAME: Joi.string().default('Addis Ababa Revenue Bureau'),
+  APP_NAME: Joi.string().default('Addis Ababa House Rental'),
+  SMTP_HOST: Joi.string().optional(),
+  SMTP_PORT: Joi.number().port().default(587),
+  SMTP_USER: Joi.string().optional(),
+  SMTP_PASS: Joi.string().optional(),
+  SMTP_FROM: Joi.string().email().optional(),
 });

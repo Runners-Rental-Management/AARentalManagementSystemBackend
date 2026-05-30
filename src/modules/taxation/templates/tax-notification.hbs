@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Annual Property Tax Calculation - {{taxYear}}</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; background: #f4f6f8; }
+    .wrapper { max-width: 640px; margin: 24px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: #0d47a1; color: #fff; padding: 24px 32px; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+    .content { padding: 32px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+    th { background: #f5f5f5; font-weight: 600; }
+    td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    .notice { background: #fff8e1; border-left: 4px solid #ffa000; padding: 16px; margin: 24px 0; font-size: 14px; }
+    .footer { background: #f5f5f5; padding: 20px 32px; font-size: 12px; color: #616161; }
+    .btn { display: inline-block; background: #0d47a1; color: #fff !important; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>{{appName}} — Annual Tax Calculation {{taxYear}}</h1>
+    </div>
+    <div class="content">
+      <p>Dear {{landlordName}},</p>
+      <p>
+        In accordance with <strong>Housing Proclamation No. 1320/2024</strong>, we have prepared
+        your annual rental income tax calculation for the {{taxYear}} tax year. The figures below
+        are based on registered lease contracts and long-term vacancy periods on your properties
+        in Addis Ababa.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Income type</th>
+            <th class="amount">Amount (ETB)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Rental income from occupied properties</td>
+            <td class="amount">{{actualIncome}}</td>
+          </tr>
+          <tr>
+            <td>Potential income from vacant periods (&gt;6 months)</td>
+            <td class="amount">{{vacancyIncome}}</td>
+          </tr>
+          <tr>
+            <td><strong>Total taxable income</strong></td>
+            <td class="amount"><strong>{{totalTaxableIncome}}</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Estimated tax</strong></td>
+            <td class="amount"><strong>{{estimatedTax}}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="notice">
+        <strong>Important:</strong> This calculation is provided for <strong>information purposes only</strong>.
+        You must pay your tax directly to the <strong>{{authorityName}}</strong> by
+        <strong>{{paymentDeadline}}</strong>. This platform does <strong>NOT</strong> collect taxes
+        on behalf of any government authority.
+      </div>
+
+      {{#if pdfUrl}}
+      <p>
+        <a class="btn" href="{{pdfUrl}}">Download PDF report</a>
+      </p>
+      {{/if}}
+
+      <p>
+        If you have questions about this calculation, please contact your sub-city housing office
+        or the tax authority. Keep your registered lease documents for audit purposes.
+      </p>
+    </div>
+    <div class="footer">
+      <p>{{appName}} · Generated {{generatedDate}}</p>
+      <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+  </div>
+</body>
+</html>

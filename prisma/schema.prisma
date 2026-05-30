@@ -75,6 +75,7 @@ enum NotificationCategory {
   rent_adjustment
   verification
   system
+  taxation
 }
 
 enum PaymentStatus {
@@ -160,6 +161,14 @@ model User {
   penaltiesReceived      PenaltyNotice[] @relation("PenaltyIssuedTo")
   updatedSystemParameters SystemParameter[]
   authSessions           AuthSession[]
+  leaseContracts         LeaseContract[]        @relation("LeaseLandlord")
+  leaseContractsAsTenant LeaseContract[]        @relation("LeaseTenant")
+  landlordTaxRecords     LandlordTaxRecord[]
+  taxCalculationLogs     TaxCalculationLog[]
+  terminationRequestsAsLandlord TerminationRequest[] @relation("TerminationLandlord")
+  rentIncreaseRequestsAsLandlord RentIncreaseRequest[] @relation("RentIncreaseLandlord")
+  complianceViolations   ComplianceViolation[]  @relation("ViolationLandlord")
+  complianceViolationsReported ComplianceViolation[] @relation("ViolationReporter")
 
   @@index([role, createdAt])
   @@index([isVerified, role])
@@ -192,6 +201,12 @@ model Property {
   landlord      User           @relation("PropertyLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
   agreements    TenancyAgreement[]
   documents     SupportingDocument[]
+  leaseContracts       LeaseContract[]
+  vacancyTracker       PropertyVacancyTracker?
+  contractDocuments    ContractDocument[]
+  terminationRequests  TerminationRequest[]
+  rentIncreaseRequests RentIncreaseRequest[]
+  complianceViolations ComplianceViolation[]
 
   @@index([landlordId, status])
   @@index([subCity, status, monthlyRent])
@@ -427,4 +442,288 @@ model AuthSession {
 
   @@index([userId, isRevoked])
   @@index([expiresAt])
+}
+
+// =============================================================================
+// Housing Proclamation No. 1320/2024 — registration, taxation, compliance
+// =============================================================================
+
+/// Registered housing contract (authority-approved lease for tax & compliance).
+enum LeaseRegistrationStatus {
+  draft
+  pending_authority
+  approved
+  rejected
+  expired
+  terminated
+}
+
+enum LandlordTaxRecordStatus {
+  draft
+  calculated
+  notified
+  acknowledged
+  paid
+  disputed
+}
+
+enum TaxCalculationLogAction {
+  calculate
+  recalculate
+  bulk_calculate
+  notify_email
+  pdf_generated
+}
+
+enum TerminationRequestStatus {
+  pending
+  notice_period_active
+  approved
+  rejected
+  withdrawn
+  completed
+}
+
+enum RentIncreaseRequestStatus {
+  pending
+  tenant_notified
+  under_review
+  approved
+  rejected
+  withdrawn
+  applied
+}
+
+enum ComplianceViolationType {
+  unregistered_lease
+  excessive_rent_increase
+  insufficient_termination_notice
+  tax_non_compliance
+  vacancy_underreporting
+  tenant_rights_breach
+  other
+}
+
+enum ComplianceViolationStatus {
+  open
+  under_investigation
+  resolved
+  escalated
+  dismissed
+}
+
+enum ContractDocumentType {
+  lease_agreement
+  registration_certificate
+  tax_assessment
+  termination_notice
+  rent_increase_notice
+  identity_verification
+  other
+}
+
+/// Formal registered lease (links to platform agreement when applicable).
+model LeaseContract {
+  id              String                  @id @default(cuid())
+  propertyId      String
+  landlordId      String
+  tenantId        String
+  agreementId     String?                 @unique
+  registrationNo  String?                 @unique
+  monthlyRent     Decimal                 @db.Decimal(12, 2)
+  startDate       DateTime
+  endDate         DateTime
+  status          LeaseRegistrationStatus @default(draft)
+  /// Authority approval timestamp — required for tax income recognition.
+  approvedAt      DateTime?
+  approvedById    String?
+  utilities       String[]                @default([])
+  depositAmount   Decimal?                @db.Decimal(12, 2)
+  noticePeriodDays Int                    @default(30)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  property        Property                @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  landlord        User                    @relation("LeaseLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
+  tenant          User                    @relation("LeaseTenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  documents       ContractDocument[]
+  terminationRequests TerminationRequest[]
+  rentIncreaseRequests RentIncreaseRequest[]
+
+  @@index([landlordId, status])
+  @@index([propertyId, status])
+  @@index([tenantId, status])
+  @@index([approvedAt])
+  @@index([startDate, endDate])
+}
+
+/// Annual landlord rental income tax assessment (informational; payment to authority).
+model LandlordTaxRecord {
+  id                     String                  @id @default(cuid())
+  landlordId             String
+  taxYear                Int
+  grossAnnualIncome      Decimal                 @db.Decimal(14, 2)
+  occupiedMonths         Decimal                 @db.Decimal(6, 2)
+  vacancyMonths          Decimal                 @db.Decimal(6, 2)
+  potentialVacancyIncome Decimal                 @db.Decimal(14, 2)
+  totalTaxableIncome     Decimal                 @db.Decimal(14, 2)
+  calculatedTaxAmount    Decimal                 @db.Decimal(14, 2)
+  taxRateApplied         Decimal                 @db.Decimal(5, 4)
+  status                 LandlordTaxRecordStatus @default(calculated)
+  notificationSent       Boolean                 @default(false)
+  notificationSentAt     DateTime?
+  calculationNotes       String?                 @db.Text
+  breakdownJson          Json?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  landlord               User                    @relation(fields: [landlordId], references: [id], onDelete: Restrict)
+
+  @@unique([landlordId, taxYear])
+  @@index([landlordId, taxYear])
+  @@index([taxYear, status])
+  @@index([notificationSent])
+}
+
+/// Tracks current vacancy for a property (updated by cron).
+model PropertyVacancyTracker {
+  id                  String    @id @default(cuid())
+  propertyId          String    @unique
+  landlordId          String
+  vacancyStartDate    DateTime
+  lastLeaseEndDate    DateTime?
+  daysVacant          Int       @default(0)
+  monthlyRent         Decimal   @db.Decimal(12, 2)
+  isLongTermVacancy   Boolean   @default(false)
+  /// Proclamation: gaps >180 days may be deemed taxable potential income.
+  longTermThresholdDays Int     @default(180)
+  landlordNotifiedAt  DateTime?
+  estimatedVacancyTax Decimal?  @db.Decimal(14, 2)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  property            Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([landlordId, isLongTermVacancy])
+  @@index([daysVacant])
+  @@index([isLongTermVacancy, daysVacant])
+}
+
+/// Audit trail for all tax computations.
+model TaxCalculationLog {
+  id           String                  @id @default(cuid())
+  landlordId   String
+  taxYear      Int
+  action       TaxCalculationLogAction
+  performedById String?
+  inputJson    Json?
+  resultJson   Json?
+  errorMessage String?                 @db.Text
+  createdAt    DateTime                @default(now())
+  landlord     User                    @relation(fields: [landlordId], references: [id], onDelete: Restrict)
+
+  @@index([landlordId, taxYear])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+/// Lease termination with statutory notice period tracking.
+model TerminationRequest {
+  id                String                   @id @default(cuid())
+  leaseContractId   String?
+  agreementId       String?
+  propertyId        String
+  landlordId        String
+  tenantId          String
+  requestedById     String
+  reason            String                   @db.Text
+  requestedEndDate  DateTime
+  noticePeriodDays  Int
+  noticeServedAt    DateTime                 @default(now())
+  earliestEndDate DateTime
+  status            TerminationRequestStatus @default(pending)
+  reviewedById      String?
+  reviewedAt        DateTime?
+  reviewNotes       String?                  @db.Text
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  leaseContract     LeaseContract?           @relation(fields: [leaseContractId], references: [id], onDelete: SetNull)
+  property          Property                 @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  landlord          User                     @relation("TerminationLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
+
+  @@index([landlordId, status])
+  @@index([tenantId, status])
+  @@index([propertyId, status])
+  @@index([status, createdAt])
+}
+
+/// Rent increase request (separate from RentAdjustment workflow; proclamation limits).
+model RentIncreaseRequest {
+  id                 String                    @id @default(cuid())
+  leaseContractId    String?
+  agreementId        String?
+  propertyId         String
+  landlordId         String
+  tenantId           String
+  currentRent        Decimal                   @db.Decimal(12, 2)
+  proposedRent       Decimal                   @db.Decimal(12, 2)
+  increasePercent    Decimal                   @db.Decimal(5, 2)
+  maxAllowedPercent  Decimal                   @db.Decimal(5, 2)
+  effectiveDate      DateTime
+  justification      String                    @db.Text
+  status             RentIncreaseRequestStatus @default(pending)
+  tenantNotifiedAt   DateTime?
+  reviewedById       String?
+  reviewedAt         DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  leaseContract      LeaseContract?            @relation(fields: [leaseContractId], references: [id], onDelete: SetNull)
+  property           Property                  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  landlord           User                      @relation("RentIncreaseLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
+
+  @@index([landlordId, status])
+  @@index([propertyId, status])
+  @@index([status, createdAt])
+}
+
+/// Documents attached to registered leases.
+model ContractDocument {
+  id              String               @id @default(cuid())
+  leaseContractId String?
+  propertyId      String?
+  documentType    ContractDocumentType
+  fileName        String
+  fileType        String
+  fileSize        Int
+  storageKey      String               @unique
+  uploadedById    String
+  description     String?              @db.Text
+  uploadedAt      DateTime             @default(now())
+  leaseContract   LeaseContract?       @relation(fields: [leaseContractId], references: [id], onDelete: SetNull)
+  property        Property?            @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([leaseContractId])
+  @@index([propertyId])
+  @@index([documentType])
+}
+
+/// Authority-tracked proclamation violations.
+model ComplianceViolation {
+  id             String                    @id @default(cuid())
+  landlordId     String?
+  propertyId     String?
+  reportedById   String
+  violationType  ComplianceViolationType
+  description    String                    @db.Text
+  status         ComplianceViolationStatus @default(open)
+  resolutionNotes String?                  @db.Text
+  resolvedAt     DateTime?
+  dueDate        DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  landlord       User?                     @relation("ViolationLandlord", fields: [landlordId], references: [id], onDelete: SetNull)
+  property       Property?                 @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  reportedBy     User                      @relation("ViolationReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+
+  @@index([landlordId, status])
+  @@index([propertyId, status])
+  @@index([violationType, status])
+  @@index([status, createdAt])
 }
