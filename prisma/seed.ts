@@ -238,14 +238,6 @@ async function seedSystemParameters(adminId: string) {
         'Maximum percentage a landlord may increase rent per year across all agreements.',
     },
     {
-      key: 'dispute_resolution_days',
-      label: 'Dispute Resolution Deadline (days)',
-      value: '30',
-      category: 'compliance' as const,
-      description:
-        'Number of days within which an authority agent must resolve a dispute.',
-    },
-    {
       key: 'agreement_verification_days',
       label: 'Agreement Verification Deadline (days)',
       value: '7',
