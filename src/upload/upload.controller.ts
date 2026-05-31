@@ -1,73 +1,69 @@
 import {
+  BadRequestException,
   Controller,
   Post,
+  Query,
   UploadedFiles,
   UseInterceptors,
-  BadRequestException,
-  Request,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import { randomUUID } from 'crypto';
+import { memoryStorage } from 'multer';
+import {
+  CloudinaryService,
+  type CloudinaryUploadType,
+} from './cloudinary.service';
 
 type UploadedFile = {
-  filename: string;
-  mimetype: string;
+  buffer: Buffer;
   originalname: string;
+  mimetype: string;
+  size: number;
 };
 
-const UPLOAD_DIR = join(process.cwd(), 'uploads');
-
-// Ensure directory exists at module load time
-if (!existsSync(UPLOAD_DIR)) {
-  mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-const ALLOWED_MIME: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-  'application/pdf': '.pdf',
+const ALLOWED_MIME: Record<string, true> = {
+  'image/jpeg': true,
+  'image/jpg': true,
+  'image/png': true,
+  'image/webp': true,
+  'image/gif': true,
+  'application/pdf': true,
 };
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
 
 @Controller('upload')
 export class UploadController {
+  constructor(private readonly cloudinary: CloudinaryService) {}
+
   @Post('files')
   @UseInterceptors(
     FilesInterceptor('files', 20, {
-      storage: diskStorage({
-        destination: UPLOAD_DIR,
-        filename: (_req, file, cb) => {
-          const ext = ALLOWED_MIME[file.mimetype] ?? extname(file.originalname).toLowerCase();
-          cb(null, `${randomUUID()}${ext}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: MAX_FILE_BYTES },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_MIME[file.mimetype]) {
           cb(null, true);
         } else {
-          cb(new BadRequestException(`Unsupported file type: ${file.mimetype}`), false);
+          cb(
+            new BadRequestException(`Unsupported file type: ${file.mimetype}`),
+            false,
+          );
         }
       },
     }),
   )
-  uploadFiles(
+  async uploadFiles(
     @UploadedFiles() files: UploadedFile[],
-    @Request() req: { protocol: string; get: (h: string) => string },
+    @Query('type') type?: string,
   ) {
     if (!files?.length) {
       throw new BadRequestException('No files received');
     }
-    const base = `${req.protocol}://${req.get('host')}`;
-    return {
-      urls: files.map((f) => `${base}/uploads/${f.filename}`),
-    };
+
+    const uploadType: CloudinaryUploadType =
+      type === 'ownership' ? 'ownership' : 'photos';
+
+    const uploaded = await this.cloudinary.uploadFiles(files, uploadType);
+    return { files: uploaded };
   }
 }

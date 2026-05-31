@@ -70,8 +70,6 @@ export class UsersService {
         { ownedProperties: { some: propertyWhere } },
         { agreementsAsLandlord: { some: { property: propertyWhere } } },
         { agreementsAsTenant: { some: { property: propertyWhere } } },
-        { reportedDisputes: { some: { property: propertyWhere } } },
-        { respondedDisputes: { some: { property: propertyWhere } } },
       ],
     };
   }
@@ -221,7 +219,6 @@ export class UsersService {
             ownedProperties: true,
             agreementsAsLandlord: true,
             agreementsAsTenant: true,
-            reportedDisputes: true,
           },
         },
       },
@@ -304,65 +301,41 @@ export class UsersService {
     const agreementWhere: Prisma.TenancyAgreementWhereInput = adminScope.allLocations
       ? {}
       : { property: propertyWhere };
-    const disputeWhere: Prisma.DisputeWhereInput = adminScope.allLocations
-      ? {}
-      : { property: propertyWhere };
     const adjustmentWhere: Prisma.RentAdjustmentWhereInput =
       adminScope.allLocations ? {} : { agreement: { property: propertyWhere } };
     const userWhere = this.scopedUserWhere(userId, adminScope);
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
 
     const [
       propertiesByStatus,
       agreementsByStatus,
-      disputesByStatus,
-      disputesByPriority,
       adjustmentsByStatus,
       usersByRole,
       propertiesBySubCity,
       recentProperties,
       recentAgreements,
-      recentDisputes,
     ] = await Promise.all([
-      // Properties by status
       this.prisma.property.groupBy({
         by: ['status'],
         where: { deletedAt: null, ...propertyWhere },
         _count: true,
       }),
-      // Agreements by status
       this.prisma.tenancyAgreement.groupBy({
         by: ['status'],
         where: agreementWhere,
         _count: true,
       }),
-      // Disputes by status
-      this.prisma.dispute.groupBy({
-        by: ['status'],
-        where: disputeWhere,
-        _count: true,
-      }),
-      // Disputes by priority
-      this.prisma.dispute.groupBy({
-        by: ['priority'],
-        where: disputeWhere,
-        _count: true,
-      }),
-      // Rent adjustments by status
       this.prisma.rentAdjustment.groupBy({
         by: ['status'],
         where: adjustmentWhere,
         _count: true,
       }),
-      // Users by role
       this.prisma.user.groupBy({
         by: ['role'],
         where: { deletedAt: null, AND: [userWhere] },
         _count: true,
       }),
-      // Properties by sub-city (top 8)
       this.prisma.property.groupBy({
         by: ['subCity'],
         where: { deletedAt: null, ...propertyWhere },
@@ -370,7 +343,6 @@ export class UsersService {
         orderBy: { _count: { subCity: 'desc' } },
         take: 8,
       }),
-      // Recent properties (last 30 days per week)
       this.prisma.property.count({
         where: {
           createdAt: { gte: thirtyDaysAgo },
@@ -378,52 +350,39 @@ export class UsersService {
           ...propertyWhere,
         },
       }),
-      // Recent agreements (last 30 days)
       this.prisma.tenancyAgreement.count({
         where: { createdAt: { gte: thirtyDaysAgo }, ...agreementWhere },
       }),
-      // Recent disputes (last 30 days)
-      this.prisma.dispute.count({
-        where: { createdAt: { gte: thirtyDaysAgo }, ...disputeWhere },
-      }),
     ]);
 
-    // Monthly trend for the last 6 months
-    const monthlyTrend: { month: string; properties: number; agreements: number; disputes: number }[] = [];
+    const monthlyTrend: { month: string; properties: number; agreements: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
       const label = start.toLocaleString('en-US', { month: 'short', year: '2-digit' });
 
-      const [props, agrs, disps] = await Promise.all([
+      const [props, agrs] = await Promise.all([
         this.prisma.property.count({
           where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...propertyWhere },
         }),
         this.prisma.tenancyAgreement.count({
           where: { createdAt: { gte: start, lte: end }, ...agreementWhere },
         }),
-        this.prisma.dispute.count({
-          where: { createdAt: { gte: start, lte: end }, ...disputeWhere },
-        }),
       ]);
 
-      monthlyTrend.push({ month: label, properties: props, agreements: agrs, disputes: disps });
+      monthlyTrend.push({ month: label, properties: props, agreements: agrs });
     }
 
     return {
       overview: {
         totalProperties: propertiesByStatus.reduce((s, r) => s + r._count, 0),
         totalAgreements: agreementsByStatus.reduce((s, r) => s + r._count, 0),
-        totalDisputes: disputesByStatus.reduce((s, r) => s + r._count, 0),
         totalUsers: usersByRole.reduce((s, r) => s + r._count, 0),
         recentProperties,
         recentAgreements,
-        recentDisputes,
       },
       propertiesByStatus: propertiesByStatus.map((r) => ({ status: r.status, count: r._count })),
       agreementsByStatus: agreementsByStatus.map((r) => ({ status: r.status, count: r._count })),
-      disputesByStatus: disputesByStatus.map((r) => ({ status: r.status, count: r._count })),
-      disputesByPriority: disputesByPriority.map((r) => ({ priority: r.priority, count: r._count })),
       adjustmentsByStatus: adjustmentsByStatus.map((r) => ({ status: r.status, count: r._count })),
       usersByRole: usersByRole.map((r) => ({ role: r.role, count: r._count })),
       propertiesBySubCity: propertiesBySubCity.map((r) => ({ subCity: r.subCity, count: r._count })),

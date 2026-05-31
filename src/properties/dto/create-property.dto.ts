@@ -10,7 +10,31 @@ import {
   Length,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class OwnershipDocumentDto {
+  @IsString()
+  url: string;
+
+  @IsString()
+  storageKey: string;
+
+  @IsString()
+  fileName: string;
+
+  @IsString()
+  fileType: string;
+
+  @IsInt()
+  @Min(0)
+  fileSize: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
 
 export class CreatePropertyDto {
   @IsString()
@@ -69,4 +93,11 @@ export class CreatePropertyDto {
   @IsOptional()
   @IsEnum(HomeCondition)
   homeCondition?: HomeCondition;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => OwnershipDocumentDto)
+  ownershipDocuments?: OwnershipDocumentDto[];
 }

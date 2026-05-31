@@ -10,7 +10,6 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { OnboardingGuard } from './auth/guards/onboarding.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
-import { DisputesModule } from './disputes/disputes.module';
 import { PropertiesModule } from './properties/properties.module';
 import { PricePredictionModule } from './price-prediction/price-prediction.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -40,7 +39,6 @@ import { PaymentsModule } from './payments/payments.module';
     UsersModule,
     PropertiesModule,
     AgreementsModule,
-    DisputesModule,
     RentAdjustmentsModule,
     NotificationsModule,
     UploadModule,

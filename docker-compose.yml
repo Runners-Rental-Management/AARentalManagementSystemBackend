@@ -35,6 +35,10 @@ services:
       THROTTLE_TTL_MS: 60000
       THROTTLE_LIMIT: 100
       PRISMA_DB_PUSH: '1'
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      CLOUDINARY_FOLDER: house
     depends_on:
       postgres:
         condition: service_healthy
