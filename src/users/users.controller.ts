@@ -12,6 +12,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { OnboardingService } from '../auth/onboarding.service';
 import { Roles } from '../auth/roles.decorator';
 import { SkipOnboarding } from '../auth/skip-onboarding.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ListAuditLogsDto } from './dto/list-audit-logs.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { LookupTenantDto } from './dto/lookup-tenant.dto';
@@ -38,6 +39,14 @@ export class UsersController {
     return this.usersService.updateMe(userId, dto);
   }
 
+  @Patch('me/password')
+  changePassword(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.usersService.changePassword(userId, dto);
+  }
+
   @Post('me/fayda/verify')
   verifyFayda(@CurrentUser('sub') userId: string, @Body() dto: VerifyFaydaDto) {
     return this.onboarding.verifyFayda(userId, dto);
@@ -59,43 +68,62 @@ export class UsersController {
 
   // ─── Admin endpoints ─────────────────────────────────────────────────────
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Get('admin/stats')
-  getDashboardStats() {
-    return this.usersService.getDashboardStats();
+  getDashboardStats(
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+  ) {
+    return this.usersService.getDashboardStats(userId, role);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Get('admin/list')
-  listAll(@Query() query: ListUsersDto) {
-    return this.usersService.listAll(query);
+  listAll(
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+    @Query() query: ListUsersDto,
+  ) {
+    return this.usersService.listAll(userId, role, query);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Get('admin/:id')
-  getUserById(@Param('id') id: string) {
-    return this.usersService.getUserById(id);
+  getUserById(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+  ) {
+    return this.usersService.getUserById(id, userId, role);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Get('admin/audit-logs/list')
-  listAuditLogs(@Query() query: ListAuditLogsDto) {
-    return this.usersService.listAuditLogs(query);
+  listAuditLogs(
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+    @Query() query: ListAuditLogsDto,
+  ) {
+    return this.usersService.listAuditLogs(userId, role, query);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin)
+  @Roles(UserRole.admin)
   @Get('admin/system-parameters/list')
-  listSystemParameters() {
-    return this.usersService.listSystemParameters();
+  listSystemParameters(
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+  ) {
+    return this.usersService.listSystemParameters(userId, role);
   }
 
-  @Roles(UserRole.system_admin)
+  @Roles(UserRole.admin)
   @Patch('admin/system-parameters/:key')
   updateSystemParameter(
     @Param('key') key: string,
     @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
     @Body() dto: UpdateSystemParameterDto,
   ) {
-    return this.usersService.updateSystemParameter(key, dto.value, userId);
+    return this.usersService.updateSystemParameter(key, dto.value, userId, role);
   }
 }

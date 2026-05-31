@@ -10,7 +10,15 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import {
+  assertSubCityInScope,
+  getAdminLocationScope,
+  isAdminRole,
+  requireAdminLocationScope,
+  scopedPropertyWhere,
+} from '../auth/admin-location-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateAgreementDto } from './dto/create-agreement.dto';
 import { CreateTenantAgreementDto } from './dto/create-tenant-agreement.dto';
 import { ListAgreementsDto } from './dto/list-agreements.dto';
@@ -26,7 +34,10 @@ const OPEN_AGREEMENT_STATUSES: AgreementStatus[] = [
 
 @Injectable()
 export class AgreementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async createAsLandlord(landlordId: string, dto: CreateAgreementDto) {
     const property = await this.prisma.property.findUnique({
@@ -91,6 +102,18 @@ export class AgreementsService {
         },
       },
     });
+
+    // Notify the tenant about the new agreement awaiting signature
+    this.notifications
+      .notifyUser({
+        userId: agreement.tenantId,
+        title: 'New tenancy agreement awaiting your signature',
+        message: `A landlord has created an agreement for "${agreement.property.title}". Please review and sign.`,
+        type: 'info',
+        category: 'agreement',
+        link: `/dashboard/agreements/${agreement.id}`,
+      })
+      .catch(() => undefined);
 
     return agreement;
   }
@@ -189,6 +212,18 @@ export class AgreementsService {
       },
     });
 
+    // Notify the landlord about the tenant's rental request
+    this.notifications
+      .notifyUser({
+        userId: agreement.landlord.id,
+        title: 'Tenant has requested an agreement',
+        message: `A tenant has requested a tenancy for "${agreement.property.title}". Please review and counter-sign.`,
+        type: 'info',
+        category: 'agreement',
+        link: `/dashboard/agreements/${agreement.id}`,
+      })
+      .catch(() => undefined);
+
     return agreement;
   }
 
@@ -222,7 +257,7 @@ export class AgreementsService {
       );
     }
 
-    return this.prisma.tenancyAgreement.update({
+    const updated = await this.prisma.tenancyAgreement.update({
       where: { id },
       data: {
         status: AgreementStatus.pending_verification,
@@ -230,7 +265,7 @@ export class AgreementsService {
       },
       include: {
         property: {
-          select: { id: true, title: true, address: true, status: true },
+          select: { id: true, title: true, address: true, status: true, subCity: true },
         },
         landlord: {
           select: { id: true, firstName: true, lastName: true, email: true },
@@ -240,14 +275,35 @@ export class AgreementsService {
         },
       },
     });
+
+    // Notify admins that an agreement is pending verification
+    this.notifications
+      .adminIdsForSubCity(updated.property.subCity)
+      .then((adminIds) =>
+        this.notifications.notifyMany(
+          adminIds.map((aId) => ({
+            userId: aId,
+            title: 'Agreement pending verification',
+            message: `An agreement for "${updated.property.title}" is ready for authority review.`,
+            type: 'info' as const,
+            category: 'agreement' as const,
+            link: `/agreements/${updated.id}`,
+          })),
+        ),
+      )
+      .catch(() => undefined);
+
+    return updated;
   }
 
   async listForUser(userId: string, role: UserRole, query: ListAgreementsDto) {
     const search = query.search?.trim();
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
     const where: Prisma.TenancyAgreementWhereInput = {
       ...(query.status ? { status: query.status } : {}),
       ...(role === UserRole.landlord ? { landlordId: userId } : {}),
       ...(role === UserRole.tenant ? { tenantId: userId } : {}),
+      ...(adminScope ? { property: scopedPropertyWhere(adminScope) } : {}),
       ...(search
         ? {
             OR: [
@@ -329,14 +385,15 @@ export class AgreementsService {
       throw new NotFoundException('Agreement not found');
     }
 
-    const isAdmin =
-      role === UserRole.admin ||
-      role === UserRole.system_admin ||
-      role === UserRole.dara_agent;
+    const isAdmin = isAdminRole(role);
     const isParty =
       agreement.landlordId === userId || agreement.tenantId === userId;
     if (!isAdmin && !isParty) {
       throw new ForbiddenException('You cannot access this agreement');
+    }
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
+    if (adminScope) {
+      assertSubCityInScope(adminScope, agreement.property.subCity);
     }
 
     return agreement;
@@ -361,38 +418,60 @@ export class AgreementsService {
       );
     }
 
-    return this.prisma.tenancyAgreement.update({
+    const signed = await this.prisma.tenancyAgreement.update({
       where: { id },
       data: {
         status: AgreementStatus.pending_verification,
         tenantSignedAt: agreement.tenantSignedAt ?? new Date(),
       },
       include: {
-        property: { select: { id: true, title: true, status: true } },
+        property: { select: { id: true, title: true, status: true, subCity: true } },
         landlord: { select: { id: true, firstName: true, lastName: true } },
         tenant: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+
+    // Notify the landlord that the tenant signed
+    this.notifications
+      .notifyUser({
+        userId: signed.landlordId,
+        title: 'Tenant signed the agreement',
+        message: `Your tenant signed the agreement for "${signed.property.title}". It is now pending authority verification.`,
+        type: 'success',
+        category: 'agreement',
+        link: `/dashboard/agreements/${signed.id}`,
+      })
+      .catch(() => undefined);
+
+    return signed;
   }
 
-  async reviewByAuthority(id: string, role: UserRole, dto: ReviewAgreementDto) {
-    const isAuthority =
-      role === UserRole.admin ||
-      role === UserRole.system_admin ||
-      role === UserRole.dara_agent;
-    if (!isAuthority) {
+  async reviewByAuthority(
+    id: string,
+    userId: string,
+    role: UserRole,
+    dto: ReviewAgreementDto,
+  ) {
+    if (!isAdminRole(role)) {
       throw new ForbiddenException(
         'Only authority users can review agreements',
       );
     }
+    const adminScope = await requireAdminLocationScope(this.prisma, userId, role);
 
     const agreement = await this.prisma.tenancyAgreement.findUnique({
       where: { id },
-      select: { id: true, propertyId: true, status: true },
+      select: {
+        id: true,
+        propertyId: true,
+        status: true,
+        property: { select: { subCity: true } },
+      },
     });
     if (!agreement) {
       throw new NotFoundException('Agreement not found');
     }
+    assertSubCityInScope(adminScope, agreement.property.subCity);
     if (agreement.status !== AgreementStatus.pending_verification) {
       throw new UnprocessableEntityException(
         'Agreement is not in review state',
@@ -436,6 +515,32 @@ export class AgreementsService {
 
       return updatedAgreement;
     });
+
+    const activated = dto.status === AgreementStatus.active;
+    this.notifications
+      .notifyMany([
+        {
+          userId: result.landlordId,
+          title: activated ? 'Agreement approved' : 'Agreement rejected',
+          message: activated
+            ? `The agreement for "${result.property.title}" is now active.`
+            : `The agreement for "${result.property.title}" was rejected by the authority.`,
+          type: activated ? 'success' : 'warning',
+          category: 'agreement',
+          link: `/dashboard/agreements/${result.id}`,
+        },
+        {
+          userId: result.tenantId,
+          title: activated ? 'Your tenancy is confirmed' : 'Agreement rejected',
+          message: activated
+            ? `Your tenancy agreement for "${result.property.title}" has been approved. Welcome home!`
+            : `The agreement for "${result.property.title}" was rejected. Please contact your landlord.`,
+          type: activated ? 'success' : 'warning',
+          category: 'agreement',
+          link: `/dashboard/agreements/${result.id}`,
+        },
+      ])
+      .catch(() => undefined);
 
     return result;
   }

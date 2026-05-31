@@ -23,6 +23,25 @@ if (databaseUrl.startsWith('prisma+postgres://')) {
 const adapter = new PrismaPg({ connectionString: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
+const ADDIS_SUB_CITIES = [
+  'Addis Ketema',
+  'Akaky Kaliti',
+  'Arada',
+  'Bole',
+  'Gullele',
+  'Kirkos',
+  'Kolfe Keranio',
+  'Lideta',
+  'Nifas Silk-Lafto',
+  'Yeka',
+  'Lemi Kura',
+];
+
+function adminEmailForSubCity(subCity: string) {
+  const slug = subCity.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `admin-${slug}@aarental.local`;
+}
+
 async function seedUsers() {
   const passwordHash = await bcrypt.hash('Passw0rd!234', 12);
 
@@ -32,7 +51,9 @@ async function seedUsers() {
       firstName: 'System',
       lastName: 'Admin',
       phone: '+251900000001',
-      role: UserRole.system_admin,
+      role: UserRole.admin,
+      adminAllLocations: true,
+      adminSubCities: [],
       isVerified: true,
       passwordHash,
     },
@@ -41,11 +62,40 @@ async function seedUsers() {
       firstName: 'System',
       lastName: 'Admin',
       phone: '+251900000001',
-      role: UserRole.system_admin,
+      role: UserRole.admin,
+      adminAllLocations: true,
+      adminSubCities: [],
       isVerified: true,
       passwordHash,
     },
   });
+
+  for (const [index, subCity] of ADDIS_SUB_CITIES.entries()) {
+    await prisma.user.upsert({
+      where: { email: adminEmailForSubCity(subCity) },
+      update: {
+        firstName: subCity,
+        lastName: 'Admin',
+        phone: `+251900001${String(index).padStart(3, '0')}`,
+        role: UserRole.admin,
+        adminAllLocations: false,
+        adminSubCities: [subCity],
+        isVerified: true,
+        passwordHash,
+      },
+      create: {
+        email: adminEmailForSubCity(subCity),
+        firstName: subCity,
+        lastName: 'Admin',
+        phone: `+251900001${String(index).padStart(3, '0')}`,
+        role: UserRole.admin,
+        adminAllLocations: false,
+        adminSubCities: [subCity],
+        isVerified: true,
+        passwordHash,
+      },
+    });
+  }
 
   const landlord = await prisma.user.upsert({
     where: { email: 'landlord@aarental.local' },

@@ -39,7 +39,7 @@ export class RentAdjustmentsController {
     return this.rentAdjustmentsService.list(userId, role, query);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Patch(':id/review')
   review(
     @Param('id') id: string,

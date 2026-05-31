@@ -47,13 +47,14 @@ export class DisputesController {
     return this.disputesService.getById(id, userId, role);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Patch(':id/review')
   review(
     @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
     @CurrentUser('role') role: UserRole,
     @Body() dto: ReviewDisputeDto,
   ) {
-    return this.disputesService.review(id, role, dto);
+    return this.disputesService.review(id, userId, role, dto);
   }
 }

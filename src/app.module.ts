@@ -16,6 +16,7 @@ import { PricePredictionModule } from './price-prediction/price-prediction.modul
 import { PrismaModule } from './prisma/prisma.module';
 import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.module';
 import { UsersModule } from './users/users.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -39,7 +40,7 @@ import { UsersModule } from './users/users.module';
     AgreementsModule,
     DisputesModule,
     RentAdjustmentsModule,
-    PricePredictionModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
