@@ -42,6 +42,9 @@ lerna-debug.log*
 # .env.production.local
 # .env.local
 
+# User-uploaded files (served locally, not versioned)
+/uploads
+
 # temp directory
 .temp
 .tmp

@@ -226,6 +226,7 @@ export class PropertiesService {
   }
 
   async findOne(id: string, userId: string, role: UserRole) {
+    const isAdmin = isAdminRole(role);
     const property = await this.prisma.property.findUnique({
       where: { id },
       include: {
@@ -239,6 +240,20 @@ export class PropertiesService {
             role: true,
           },
         },
+        // Include ownership documents for admin reviewers
+        documents: isAdmin
+          ? {
+              select: {
+                id: true,
+                fileName: true,
+                fileType: true,
+                fileSize: true,
+                storageKey: true,
+                description: true,
+                uploadedAt: true,
+              },
+            }
+          : false,
       },
     });
 
@@ -348,10 +363,10 @@ export class PropertiesService {
     this.notifications
       .notifyUser({
         userId: updated.landlordId,
-        title: approved ? 'Property approved' : 'Property rejected',
+        title: approved ? 'Property approved' : 'Property listing rejected',
         message: approved
           ? `Your property "${updated.title}" has been approved and is now listed on Explore.`
-          : `Your property "${updated.title}" was not approved. Please review and resubmit.`,
+          : `Your property "${updated.title}" was not approved.${dto.rejectionReason ? ` Reason: ${dto.rejectionReason}` : ' Please review and resubmit.'}`,
         type: approved ? 'success' : 'warning',
         category: 'verification',
         link: `/dashboard/properties/${updated.id}`,

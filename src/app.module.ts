@@ -17,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.module';
 import { UsersModule } from './users/users.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     DisputesModule,
     RentAdjustmentsModule,
     NotificationsModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [
