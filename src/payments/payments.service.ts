@@ -13,6 +13,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   Prisma,
+  PropertyStatus,
   UserRole,
 } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -105,6 +106,103 @@ export class PaymentsService {
     return payment;
   }
 
+  async initiateChapaAdvancePayment(agreementId: string, userId: string) {
+    this.chapa.assertConfigured();
+
+    const agreement = await this.prisma.tenancyAgreement.findUnique({
+      where: { id: agreementId },
+      include: {
+        property: { select: { title: true } },
+        tenant: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!agreement) {
+      throw new NotFoundException('Agreement not found');
+    }
+
+    if (agreement.tenantId !== userId) {
+      throw new ForbiddenException('Only the tenant can pay the advance rent');
+    }
+
+    if (agreement.status !== AgreementStatus.pending_payment) {
+      throw new UnprocessableEntityException(
+        'Agreement is not awaiting initial payment',
+      );
+    }
+
+    let payment = await this.prisma.rentPayment.findFirst({
+      where: {
+        agreementId,
+        payerId: userId,
+        status: { in: [PaymentStatus.pending, PaymentStatus.overdue] },
+      },
+    });
+
+    if (!payment) {
+      payment = await this.prisma.rentPayment.create({
+        data: {
+          agreementId,
+          payerId: agreement.tenantId,
+          recipientId: agreement.landlordId,
+          amount: agreement.advancePayment,
+          dueDate: agreement.startDate,
+          status: PaymentStatus.pending,
+        },
+      });
+    }
+
+    const txRef = this.chapa.generateTxRef(payment.id);
+    const phone = this.chapa.normalizePhone(agreement.tenant.phone);
+
+    const returnBase = this.chapa.getReturnUrl();
+    const returnUrl = `${returnBase}${returnBase.includes('?') ? '&' : '?'}type=agreement&agreementId=${agreement.id}&paymentId=${payment.id}`;
+
+    const init = await this.chapa.initialize({
+      amount: payment.amount.toString(),
+      email: this.chapa.paymentEmail(agreement.tenant.email, agreement.tenant.id),
+      first_name: agreement.tenant.firstName,
+      last_name: agreement.tenant.lastName,
+      ...(phone ? { phone_number: phone } : {}),
+      tx_ref: txRef,
+      return_url: returnUrl,
+      customization: {
+        title: this.chapa.paymentTitle('Advance Rent'),
+        description: `Advance rent for ${agreement.property.title}`.slice(0, 200),
+      },
+      meta: {
+        rentPaymentId: payment.id,
+        agreementId: agreement.id,
+        paymentKind: 'advance',
+      },
+    });
+
+    await this.prisma.rentPayment.update({
+      where: { id: payment.id },
+      data: {
+        chapaTxRef: txRef,
+        method: PaymentMethod.chapa,
+        reference: txRef,
+      },
+    });
+
+    return {
+      checkoutUrl: init.data!.checkout_url,
+      txRef,
+      amount: payment.amount,
+      currency: 'ETB',
+      paymentId: payment.id,
+    };
+  }
+
   async initiateChapaPayment(paymentId: string, userId: string) {
     this.chapa.assertConfigured();
 
@@ -155,6 +253,9 @@ export class PaymentsService {
     const txRef = this.chapa.generateTxRef(payment.id);
     const phone = this.chapa.normalizePhone(payment.payer.phone);
 
+    const returnBase = this.chapa.getReturnUrl();
+    const returnUrl = `${returnBase}${returnBase.includes('?') ? '&' : '?'}type=rent&paymentId=${payment.id}`;
+
     const init = await this.chapa.initialize({
       amount: payment.amount.toString(),
       email: this.chapa.paymentEmail(payment.payer.email, payment.payer.id),
@@ -162,6 +263,7 @@ export class PaymentsService {
       last_name: payment.payer.lastName,
       ...(phone ? { phone_number: phone } : {}),
       tx_ref: txRef,
+      return_url: returnUrl,
       customization: {
         title: this.chapa.paymentTitle('Rent Payment'),
         description: `Rent for ${payment.agreement.property.title}`.slice(0, 200),
@@ -246,24 +348,25 @@ export class PaymentsService {
     };
   }
 
-  private async finalizeChapaPayment(txRef: string) {
-    let payment = null;
+  private async findPaymentByChapaRef(txRef: string) {
     try {
-      payment = await this.prisma.rentPayment.findUnique({
+      const byChapaRef = await this.prisma.rentPayment.findUnique({
         where: { chapaTxRef: txRef },
       });
+      if (byChapaRef) return byChapaRef;
     } catch (error) {
-      this.logger.error(`Failed to lookup payment by chapaTxRef: ${(error as Error).message}`);
-      payment = await this.prisma.rentPayment.findFirst({
-        where: { OR: [{ reference: txRef }, { chapaTxRef: txRef }] },
-      });
+      this.logger.error(
+        `Failed to lookup payment by chapaTxRef: ${(error as Error).message}`,
+      );
     }
 
-    if (!payment) {
-      payment = await this.prisma.rentPayment.findFirst({
-        where: { OR: [{ reference: txRef }, { chapaTxRef: txRef }] },
-      });
-    }
+    return this.prisma.rentPayment.findFirst({
+      where: { OR: [{ reference: txRef }, { chapaTxRef: txRef }] },
+    });
+  }
+
+  private async finalizeChapaPayment(txRef: string) {
+    const payment = await this.findPaymentByChapaRef(txRef);
 
     if (!payment) {
       this.logger.warn(`No rent payment found for tx_ref ${txRef}`);
@@ -315,6 +418,11 @@ export class PaymentsService {
       return;
     }
 
+    const agreementBefore = await this.prisma.tenancyAgreement.findUnique({
+      where: { id: payment.agreementId },
+      select: { status: true, propertyId: true },
+    });
+
     await this.prisma.rentPayment.update({
       where: { id: paymentId },
       data: {
@@ -326,6 +434,44 @@ export class PaymentsService {
     });
 
     const propertyTitle = payment.agreement.property.title;
+
+    if (agreementBefore?.status === AgreementStatus.pending_payment) {
+      const paidAt = new Date();
+      await this.prisma.$transaction([
+        this.prisma.tenancyAgreement.update({
+          where: { id: payment.agreementId },
+          data: {
+            status: AgreementStatus.active,
+            initialPaymentAt: paidAt,
+          },
+        }),
+        this.prisma.property.update({
+          where: { id: agreementBefore.propertyId },
+          data: { status: PropertyStatus.rented },
+        }),
+      ]);
+
+      await this.notifications.notifyMany([
+        {
+          userId: payment.recipientId,
+          title: 'Advance payment received',
+          message: `The tenant has paid the advance rent for "${propertyTitle}". The tenancy is now active.`,
+          type: NotificationType.success,
+          category: NotificationCategory.agreement,
+          link: `/dashboard/agreements/${payment.agreementId}`,
+        },
+        {
+          userId: payment.payerId,
+          title: 'Tenancy activated',
+          message: `Your payment for "${propertyTitle}" was confirmed. Your tenancy is now active. Welcome home!`,
+          type: NotificationType.success,
+          category: NotificationCategory.agreement,
+          link: `/dashboard/agreements/${payment.agreementId}`,
+        },
+      ]);
+      return;
+    }
+
     await this.notifications.notifyMany([
       {
         userId: payment.payerId,
