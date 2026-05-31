@@ -128,4 +128,4 @@ npm run start:dev
 
 Seeded users use password `Passw0rd!234` (see `prisma/seed.ts`).
 
-**Environment variables** (also validated at startup): `PORT` (default 3000), `DATABASE_URL` (`postgresql://` for the Nest runtime), `CORS_ORIGIN` (comma-separated origins, e.g. `http://localhost:45000` for the Next dev server), `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` (each min 32 characters), optional `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `THROTTLE_TTL_MS`, `THROTTLE_LIMIT`. Set `PRISMA_DB_PUSH=0` to skip schema sync on container start.
+**Environment variables** (also validated at startup): `PORT` (default 3000), `DATABASE_URL` (`postgresql://` for the Nest runtime), `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` (each min 32 characters), optional `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `THROTTLE_TTL_MS`, `THROTTLE_LIMIT`. Set `PRISMA_DB_PUSH=0` to skip schema sync on container start.

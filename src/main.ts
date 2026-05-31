@@ -9,16 +9,6 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
   app.use(helmet());
-  app.enableCors({
-    origin:
-      process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim()) ??
-      true,
-    credentials: true,
-    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Authorization'],
-    maxAge: 86400,
-  });
 
   app.useGlobalPipes(
     new ValidationPipe({

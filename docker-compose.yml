@@ -28,7 +28,6 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://aarental:aarental@postgres:5432/aarental
-      CORS_ORIGIN: http://localhost:45000,http://localhost:3000
       JWT_ACCESS_SECRET: dev-access-secret-change-me-min-32-chars!!
       JWT_REFRESH_SECRET: dev-refresh-secret-change-me-min-32-chars!
       JWT_ACCESS_TTL_SECONDS: 900
