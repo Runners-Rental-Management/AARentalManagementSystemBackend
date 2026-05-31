@@ -12,6 +12,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
 import { DisputesModule } from './disputes/disputes.module';
 import { PropertiesModule } from './properties/properties.module';
+import { PricePredictionModule } from './price-prediction/price-prediction.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.module';
 import { UsersModule } from './users/users.module';
