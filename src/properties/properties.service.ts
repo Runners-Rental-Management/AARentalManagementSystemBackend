@@ -8,6 +8,7 @@ import {
   AgreementStatus,
   Prisma,
   PropertyStatus,
+  RelatedEntityType,
   UserRole,
 } from '@prisma/client';
 import {
@@ -87,9 +88,11 @@ export class PropertiesService {
       throw new ForbiddenException('Only landlords can register properties');
     }
 
+    const { ownershipDocuments, ...propertyData } = dto;
+
     const property = await this.prisma.property.create({
       data: {
-        ...dto,
+        ...propertyData,
         landlordId: userId,
         status: PropertyStatus.pending_verification,
         area: new Prisma.Decimal(dto.area),
@@ -107,6 +110,22 @@ export class PropertiesService {
         },
       },
     });
+
+    if (ownershipDocuments?.length) {
+      await this.prisma.supportingDocument.createMany({
+        data: ownershipDocuments.map((doc) => ({
+          uploaderId: userId,
+          relatedEntityType: RelatedEntityType.property,
+          relatedEntityId: property.id,
+          propertyId: property.id,
+          fileName: doc.fileName,
+          fileType: doc.fileType,
+          fileSize: doc.fileSize,
+          storageKey: doc.url,
+          description: doc.description ?? 'Proof of ownership',
+        })),
+      });
+    }
 
     // Notify all admins who cover this sub-city
     this.notifications
