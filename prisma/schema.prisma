@@ -117,6 +117,7 @@ enum PaymentMethod {
   mobile_money
   cash
   check
+  chapa
 }
 
 enum RelatedEntityType {
@@ -380,6 +381,8 @@ model RentPayment {
   status        PaymentStatus @default(pending)
   method        PaymentMethod?
   reference     String?
+  chapaTxRef     String?       @unique
+  chapaRefId    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   agreement     TenancyAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)

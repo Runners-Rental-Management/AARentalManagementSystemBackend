@@ -316,6 +316,90 @@ async function seedSystemParameters(adminId: string) {
   }
 }
 
+async function seedRentPayments(landlordId: string, tenantId: string) {
+  const agreement = await prisma.tenancyAgreement.findFirst({
+    where: {
+      landlordId,
+      tenantId,
+      status: AgreementStatus.active,
+    },
+    select: { id: true, monthlyRent: true },
+  });
+
+  if (!agreement) return;
+
+  const existing = await prisma.rentPayment.findFirst({
+    where: {
+      agreementId: agreement.id,
+      status: 'pending',
+    },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 7);
+
+  await prisma.rentPayment.create({
+    data: {
+      agreementId: agreement.id,
+      payerId: tenantId,
+      recipientId: landlordId,
+      amount: agreement.monthlyRent,
+      dueDate,
+      status: 'pending',
+    },
+  });
+}
+
+async function seedActiveAgreement(landlordId: string, tenantId: string) {
+  const property = await prisma.property.findFirst({
+    where: {
+      landlordId,
+      title: 'Cozy 1BR Condo in Kazanchis',
+      deletedAt: null,
+    },
+    select: { id: true, monthlyRent: true },
+  });
+  if (!property) return;
+
+  const existing = await prisma.tenancyAgreement.findFirst({
+    where: {
+      propertyId: property.id,
+      status: AgreementStatus.active,
+    },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const startDate = new Date();
+  const endDate = new Date(startDate);
+  endDate.setFullYear(endDate.getFullYear() + 1);
+  const monthlyRent = Number(property.monthlyRent);
+
+  await prisma.tenancyAgreement.create({
+    data: {
+      propertyId: property.id,
+      landlordId,
+      tenantId,
+      monthlyRent: new Prisma.Decimal(monthlyRent),
+      advancePayment: new Prisma.Decimal(monthlyRent * 2),
+      startDate,
+      endDate,
+      utilities: ['Water', 'Electricity'],
+      status: AgreementStatus.active,
+      tenantSignedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      landlordSignedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      verifiedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.property.update({
+    where: { id: property.id },
+    data: { status: PropertyStatus.rented },
+  });
+}
+
 async function seedAgreements(landlordId: string, tenantId: string) {
   const property = await prisma.property.findFirst({
     where: {
@@ -362,6 +446,8 @@ async function main() {
   const { landlord, admin, tenant } = await seedUsers();
   await seedProperties(landlord.id);
   await seedAgreements(landlord.id, tenant.id);
+  await seedActiveAgreement(landlord.id, tenant.id);
+  await seedRentPayments(landlord.id, tenant.id);
   await seedSystemParameters(admin.id);
   console.log('Seed completed successfully.');
   console.log('Default login password for seeded users: Passw0rd!234');

@@ -15,4 +15,9 @@ export const envValidationSchema = Joi.object({
   THROTTLE_TTL_MS: Joi.number().integer().min(1000).default(60000),
   THROTTLE_LIMIT: Joi.number().integer().min(10).default(100),
   ML_SERVICE_URL: Joi.string().uri().default('http://localhost:8000'),
+  APP_URL: Joi.string().uri().default('http://localhost:3001'),
+  CHAPA_SECRET_KEY: Joi.string().optional(),
+  CHAPA_WEBHOOK_SECRET: Joi.string().optional(),
+  CHAPA_RETURN_URL: Joi.string().uri().optional(),
+  CHAPA_CALLBACK_URL: Joi.string().uri().optional(),
 });
