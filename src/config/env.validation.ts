@@ -14,4 +14,5 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_TTL_SECONDS: Joi.number().integer().min(3600).default(1209600),
   THROTTLE_TTL_MS: Joi.number().integer().min(1000).default(60000),
   THROTTLE_LIMIT: Joi.number().integer().min(10).default(100),
+  ML_SERVICE_URL: Joi.string().uri().default('http://localhost:8000'),
 });
