@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aarental
+      POSTGRES_PASSWORD: aarental
+      POSTGRES_DB: aarental
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aarental -d aarental']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://aarental:aarental@postgres:5432/aarental
+      CORS_ORIGIN: http://localhost:45000,http://localhost:3000
+      JWT_ACCESS_SECRET: dev-access-secret-change-me-min-32-chars!!
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-me-min-32-chars!
+      JWT_ACCESS_TTL_SECONDS: 900
+      JWT_REFRESH_TTL_SECONDS: 1209600
+      THROTTLE_TTL_MS: 60000
+      THROTTLE_LIMIT: 100
+      PRISMA_DB_PUSH: '1'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

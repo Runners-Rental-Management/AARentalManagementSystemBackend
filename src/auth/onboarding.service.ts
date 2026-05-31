@@ -8,14 +8,26 @@ import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerifyFaydaDto } from '../users/dto/verify-fayda.dto';
 
-const DEMO_FAYDA_OTP = '123456';
+/** Platform sandbox OTP + Fayda eSignet test OTP (see Fayda integration docs). */
+const FAYDA_TEST_OTPS = ['123456', '111111'];
+
+function isAcceptedFaydaTestOtp(otpCode: string): boolean {
+  if (process.env.NODE_ENV === 'production') {
+    return otpCode === '123456';
+  }
+  return FAYDA_TEST_OTPS.includes(otpCode);
+}
+
+function normalizeName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
 
 @Injectable()
 export class OnboardingService {
   constructor(private readonly prisma: PrismaService) {}
 
   async verifyFayda(userId: string, dto: VerifyFaydaDto) {
-    if (dto.otpCode !== DEMO_FAYDA_OTP) {
+    if (!isAcceptedFaydaTestOtp(dto.otpCode)) {
       throw new UnprocessableEntityException('Incorrect verification code');
     }
 
@@ -29,6 +41,25 @@ export class OnboardingService {
     });
     if (existingFan) {
       throw new ConflictException('This Fayda number is already registered');
+    }
+
+    const account = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, fatherName: true },
+    });
+    if (!account) {
+      throw new ForbiddenException('User not found');
+    }
+
+    const registeredFatherName =
+      account.fatherName?.trim() || account.lastName.trim();
+    if (
+      normalizeName(dto.firstName) !== normalizeName(account.firstName) ||
+      normalizeName(dto.fatherName) !== normalizeName(registeredFatherName)
+    ) {
+      throw new UnprocessableEntityException(
+        'Fayda names do not match your account registration',
+      );
     }
 
     const now = new Date();

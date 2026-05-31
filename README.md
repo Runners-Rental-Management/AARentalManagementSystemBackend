@@ -99,6 +99,33 @@ Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 
 ## Docker (repo root)
 
-From `AARentalManagemnetSystem`: `docker compose build` then `docker compose up`. The API listens on port **3000**. Postgres is included; `PRISMA_DB_PUSH=1` in compose runs `prisma db push` on each API start (fine for local Docker; use migrations for real deployments).
+Install the [Docker Compose plugin](https://docs.docker.com/compose/install/) if `docker compose` is not available.
+
+```bash
+# Full stack (Postgres + API on port 3000)
+docker compose build
+docker compose up
+
+# Postgres only (for local npm run start:dev)
+docker compose up postgres -d
+```
+
+If port **5432** is already in use on your machine, set `POSTGRES_PORT=5433` in the environment before `docker compose up`, then point `DATABASE_URL` at `localhost:5433` in `.env`.
+
+The API listens on port **3000**. Postgres credentials default to `aarental` / `aarental` / database `aarental`. `PRISMA_DB_PUSH=1` in compose runs `prisma db push` on each API container start (fine for local Docker; use migrations for real deployments).
+
+## Local development (without Docker API)
+
+```bash
+cp .env.example .env
+npm install
+docker compose up postgres -d   # or use your own Postgres
+npx prisma generate
+npm run db:push
+npm run db:seed
+npm run start:dev
+```
+
+Seeded users use password `Passw0rd!234` (see `prisma/seed.ts`).
 
 **Environment variables** (also validated at startup): `PORT` (default 3000), `DATABASE_URL` (`postgresql://` for the Nest runtime), `CORS_ORIGIN` (comma-separated origins, e.g. `http://localhost:45000` for the Next dev server), `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` (each min 32 characters), optional `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `THROTTLE_TTL_MS`, `THROTTLE_LIMIT`. Set `PRISMA_DB_PUSH=0` to skip schema sync on container start.
