@@ -18,6 +18,7 @@ import { UsersModule } from './users/users.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { UploadModule } from './upload/upload.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -43,6 +44,8 @@ import { UploadModule } from './upload/upload.module';
     NotificationsModule,
     PaymentsModule,
     UploadModule,
+    PaymentsModule,
+    PricePredictionModule,
   ],
   controllers: [AppController],
   providers: [
