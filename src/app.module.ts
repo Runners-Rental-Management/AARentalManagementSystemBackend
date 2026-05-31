@@ -15,6 +15,7 @@ import { PropertiesModule } from './properties/properties.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.module';
 import { UsersModule } from './users/users.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module';
     AgreementsModule,
     DisputesModule,
     RentAdjustmentsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,6 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+import {
+  AdminLocationScope,
+  requireAdminLocationScope,
+  scopedPropertyWhere,
+} from '../auth/admin-location-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ListAuditLogsDto } from './dto/list-audit-logs.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -39,7 +53,36 @@ function maskFaydaNumber(faydaNumber: string): string {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  private scopedUserWhere(
+    requesterId: string,
+    scope: AdminLocationScope,
+  ): Prisma.UserWhereInput {
+    if (scope.allLocations) return {};
+    const propertyWhere = scopedPropertyWhere(scope);
+    return {
+      OR: [
+        { id: requesterId },
+        { ownedProperties: { some: propertyWhere } },
+        { agreementsAsLandlord: { some: { property: propertyWhere } } },
+        { agreementsAsTenant: { some: { property: propertyWhere } } },
+        { reportedDisputes: { some: { property: propertyWhere } } },
+        { respondedDisputes: { some: { property: propertyWhere } } },
+      ],
+    };
+  }
+
+  private async requireAllLocationAdmin(userId: string, role: UserRole) {
+    const scope = await requireAdminLocationScope(this.prisma, userId, role);
+    if (!scope.allLocations) {
+      throw new ForbiddenException('Only all-location admins can access this');
+    }
+    return scope;
+  }
 
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -51,6 +94,8 @@ export class UsersService {
         lastName: true,
         phone: true,
         role: true,
+        adminSubCities: true,
+        adminAllLocations: true,
         avatar: true,
         isVerified: true,
         address: true,
@@ -71,20 +116,25 @@ export class UsersService {
     return user;
   }
 
-  async listAll(query: ListUsersDto) {
+  async listAll(userId: string, role: UserRole, query: ListUsersDto) {
+    const adminScope = await requireAdminLocationScope(this.prisma, userId, role);
+    const searchWhere: Prisma.UserWhereInput | undefined = query.search
+      ? {
+          OR: [
+            { firstName: { contains: query.search, mode: 'insensitive' } },
+            { lastName: { contains: query.search, mode: 'insensitive' } },
+            { email: { contains: query.search, mode: 'insensitive' } },
+            { phone: { contains: query.search, mode: 'insensitive' } },
+          ],
+        }
+      : undefined;
     const where: Prisma.UserWhereInput = {
       deletedAt: null,
       ...(query.role ? { role: query.role } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { firstName: { contains: query.search, mode: 'insensitive' } },
-              { lastName: { contains: query.search, mode: 'insensitive' } },
-              { email: { contains: query.search, mode: 'insensitive' } },
-              { phone: { contains: query.search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      AND: [
+        this.scopedUserWhere(userId, adminScope),
+        ...(searchWhere ? [searchWhere] : []),
+      ],
     };
 
     const skip = (query.page - 1) * query.pageSize;
@@ -103,6 +153,8 @@ export class UsersService {
           lastName: true,
           phone: true,
           role: true,
+          adminSubCities: true,
+          adminAllLocations: true,
           isVerified: true,
           faydaVerified: true,
           createdAt: true,
@@ -131,9 +183,18 @@ export class UsersService {
     };
   }
 
-  async getUserById(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id, deletedAt: null },
+  async getUserById(id: string, requesterId: string, role: UserRole) {
+    const adminScope = await requireAdminLocationScope(
+      this.prisma,
+      requesterId,
+      role,
+    );
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        AND: [this.scopedUserWhere(requesterId, adminScope)],
+      },
       select: {
         id: true,
         email: true,
@@ -141,6 +202,8 @@ export class UsersService {
         lastName: true,
         phone: true,
         role: true,
+        adminSubCities: true,
+        adminAllLocations: true,
         avatar: true,
         isVerified: true,
         address: true,
@@ -235,7 +298,18 @@ export class UsersService {
     return this.formatTenantPublicProfile(user);
   }
 
-  async getDashboardStats() {
+  async getDashboardStats(userId: string, role: UserRole) {
+    const adminScope = await requireAdminLocationScope(this.prisma, userId, role);
+    const propertyWhere = scopedPropertyWhere(adminScope);
+    const agreementWhere: Prisma.TenancyAgreementWhereInput = adminScope.allLocations
+      ? {}
+      : { property: propertyWhere };
+    const disputeWhere: Prisma.DisputeWhereInput = adminScope.allLocations
+      ? {}
+      : { property: propertyWhere };
+    const adjustmentWhere: Prisma.RentAdjustmentWhereInput =
+      adminScope.allLocations ? {} : { agreement: { property: propertyWhere } };
+    const userWhere = this.scopedUserWhere(userId, adminScope);
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
@@ -255,54 +329,62 @@ export class UsersService {
       // Properties by status
       this.prisma.property.groupBy({
         by: ['status'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...propertyWhere },
         _count: true,
       }),
       // Agreements by status
       this.prisma.tenancyAgreement.groupBy({
         by: ['status'],
+        where: agreementWhere,
         _count: true,
       }),
       // Disputes by status
       this.prisma.dispute.groupBy({
         by: ['status'],
+        where: disputeWhere,
         _count: true,
       }),
       // Disputes by priority
       this.prisma.dispute.groupBy({
         by: ['priority'],
+        where: disputeWhere,
         _count: true,
       }),
       // Rent adjustments by status
       this.prisma.rentAdjustment.groupBy({
         by: ['status'],
+        where: adjustmentWhere,
         _count: true,
       }),
       // Users by role
       this.prisma.user.groupBy({
         by: ['role'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, AND: [userWhere] },
         _count: true,
       }),
       // Properties by sub-city (top 8)
       this.prisma.property.groupBy({
         by: ['subCity'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...propertyWhere },
         _count: true,
         orderBy: { _count: { subCity: 'desc' } },
         take: 8,
       }),
       // Recent properties (last 30 days per week)
       this.prisma.property.count({
-        where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
+        where: {
+          createdAt: { gte: thirtyDaysAgo },
+          deletedAt: null,
+          ...propertyWhere,
+        },
       }),
       // Recent agreements (last 30 days)
       this.prisma.tenancyAgreement.count({
-        where: { createdAt: { gte: thirtyDaysAgo } },
+        where: { createdAt: { gte: thirtyDaysAgo }, ...agreementWhere },
       }),
       // Recent disputes (last 30 days)
       this.prisma.dispute.count({
-        where: { createdAt: { gte: thirtyDaysAgo } },
+        where: { createdAt: { gte: thirtyDaysAgo }, ...disputeWhere },
       }),
     ]);
 
@@ -314,9 +396,15 @@ export class UsersService {
       const label = start.toLocaleString('en-US', { month: 'short', year: '2-digit' });
 
       const [props, agrs, disps] = await Promise.all([
-        this.prisma.property.count({ where: { createdAt: { gte: start, lte: end }, deletedAt: null } }),
-        this.prisma.tenancyAgreement.count({ where: { createdAt: { gte: start, lte: end } } }),
-        this.prisma.dispute.count({ where: { createdAt: { gte: start, lte: end } } }),
+        this.prisma.property.count({
+          where: { createdAt: { gte: start, lte: end }, deletedAt: null, ...propertyWhere },
+        }),
+        this.prisma.tenancyAgreement.count({
+          where: { createdAt: { gte: start, lte: end }, ...agreementWhere },
+        }),
+        this.prisma.dispute.count({
+          where: { createdAt: { gte: start, lte: end }, ...disputeWhere },
+        }),
       ]);
 
       monthlyTrend.push({ month: label, properties: props, agreements: agrs, disputes: disps });
@@ -343,8 +431,10 @@ export class UsersService {
     };
   }
 
-  async listAuditLogs(query: ListAuditLogsDto) {
+  async listAuditLogs(userId: string, role: UserRole, query: ListAuditLogsDto) {
+    const adminScope = await requireAdminLocationScope(this.prisma, userId, role);
     const where: Prisma.AuditLogWhereInput = {
+      user: this.scopedUserWhere(userId, adminScope),
       ...(query.entity ? { entity: query.entity } : {}),
       ...(query.action
         ? { action: { contains: query.action, mode: 'insensitive' } }
@@ -387,7 +477,8 @@ export class UsersService {
     };
   }
 
-  async listSystemParameters() {
+  async listSystemParameters(userId: string, role: UserRole) {
+    await this.requireAllLocationAdmin(userId, role);
     return this.prisma.systemParameter.findMany({
       orderBy: [{ category: 'asc' }, { key: 'asc' }],
       include: {
@@ -402,7 +493,9 @@ export class UsersService {
     key: string,
     value: string,
     updatedById: string,
+    role: UserRole,
   ) {
+    await this.requireAllLocationAdmin(updatedById, role);
     const param = await this.prisma.systemParameter.findUnique({
       where: { key },
     });
@@ -422,7 +515,9 @@ export class UsersService {
   async updateMe(userId: string, dto: UpdateMeDto) {
     const updated = await this.prisma.user.update({
       where: { id: userId },
-      data: dto,
+      data: {
+        address: dto.address,
+      },
       select: {
         id: true,
         email: true,
@@ -430,6 +525,8 @@ export class UsersService {
         lastName: true,
         phone: true,
         role: true,
+        adminSubCities: true,
+        adminAllLocations: true,
         avatar: true,
         isVerified: true,
         address: true,
@@ -444,5 +541,53 @@ export class UsersService {
     });
 
     return updated;
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, passwordHash: true },
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+
+    if (user.email.toLowerCase() !== dto.email.trim().toLowerCase()) {
+      throw new UnauthorizedException('Email credential check failed');
+    }
+
+    const currentPasswordMatches = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!currentPasswordMatches) {
+      throw new UnauthorizedException('Invalid current password');
+    }
+
+    const samePassword = await bcrypt.compare(dto.newPassword, user.passwordHash);
+    if (samePassword) {
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(dto.newPassword, 12),
+      },
+    });
+
+    this.notifications
+      .notifyUser({
+        userId,
+        title: 'Password changed successfully',
+        message:
+          'Your account password was changed. If you did not do this, contact support immediately.',
+        type: 'success',
+        category: 'system',
+      })
+      .catch(() => undefined);
+
+    return { ok: true };
   }
 }

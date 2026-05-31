@@ -155,6 +155,8 @@ model User {
   lastName          String
   phone             String
   role              UserRole
+  adminSubCities    String[]  @default([])
+  adminAllLocations Boolean   @default(false)
   avatar            String?
   isVerified        Boolean   @default(false)
   address           String?
