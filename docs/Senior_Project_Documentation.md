@@ -799,13 +799,13 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    L["Landlord"] -->|1: request adjustment| C["RentAdjustments Controller"]
-    C -->|2: create(dto)| S["RentAdjustments Service"]
-    S -->|3: validate active & cap| DB[("Database")]
-    A["Authority"] -->|4: review(approve)| C
-    C -->|5: review(dto)| S
-    S -->|6: TX update adjustment| DB
-    S -->|7: update agreement rent| DB
+    L["Landlord"] -->|"1: request adjustment"| C["RentAdjustments Controller"]
+    C -->|"2: create dto"| S["RentAdjustments Service"]
+    S -->|"3: validate active and cap"| DB[("Database")]
+    A["Authority"] -->|"4: review approve"| C
+    C -->|"5: review dto"| S
+    S -->|"6: TX update adjustment"| DB
+    S -->|"7: update agreement rent"| DB
 ```
 
 ## 3.4 Model Validation
@@ -1163,17 +1163,17 @@ sequenceDiagram
     actor User
     participant API as NestJS API
     participant DB as PostgreSQL
-    User->>API: POST /auth/login {email, password, role}
-    API->>DB: Find user; check lock; bcrypt.compare
+    User->>API: POST /auth/login with email, password, role
+    API->>DB: Find user, check lock, bcrypt compare
     alt Invalid credentials
-        API->>DB: increment failedLoginCount (lock after 5)
+        API->>DB: increment failedLoginCount, lock after 5
         API-->>User: 401 Unauthorized
     else Valid
-        API->>DB: Create AuthSession (hashed refresh, jti)
-        API-->>User: accessToken + refreshToken
+        API->>DB: Create AuthSession with hashed refresh and jti
+        API-->>User: accessToken and refreshToken
     end
-    User->>API: GET /protected (Bearer access)
-    API->>API: JwtAuthGuard → RolesGuard (@Roles)
+    User->>API: GET protected with Bearer access token
+    API->>API: JwtAuthGuard then RolesGuard
     alt Authorized
         API-->>User: 200 Resource
     else Forbidden
