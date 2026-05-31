@@ -11,8 +11,6 @@ enum UserRole {
   tenant
   landlord
   admin
-  dara_agent
-  system_admin
 }
 
 enum PropertyType {
@@ -42,37 +40,14 @@ enum AgreementStatus {
   pending_tenant_signature
   pending_verification
   pending_dara_verification
+  pending_payment
   active
+  extension_requested
+  termination_requested
   extended
   terminated
   expired
   rejected
-}
-
-enum DisputeStatus {
-  open
-  under_review
-  mediation
-  resolved
-  closed
-  escalated
-}
-
-enum ViolationType {
-  illegal_rent_increase
-  wrongful_eviction
-  maintenance_neglect
-  deposit_withholding
-  harassment
-  lease_violation
-  other
-}
-
-enum PriorityLevel {
-  low
-  medium
-  high
-  critical
 }
 
 enum RentAdjustmentStatus {
@@ -97,7 +72,6 @@ enum NotificationType {
 
 enum NotificationCategory {
   agreement
-  dispute
   rent_adjustment
   verification
   system
@@ -122,7 +96,6 @@ enum PaymentMethod {
 
 enum RelatedEntityType {
   agreement
-  dispute
   property
   rent_adjustment
 }
@@ -177,9 +150,6 @@ model User {
   ownedProperties   Property[]         @relation("PropertyLandlord")
   agreementsAsLandlord TenancyAgreement[] @relation("AgreementLandlord")
   agreementsAsTenant   TenancyAgreement[] @relation("AgreementTenant")
-  reportedDisputes     Dispute[]          @relation("DisputeReporter")
-  respondedDisputes    Dispute[]          @relation("DisputeRespondent")
-  assignedDisputes     Dispute[]          @relation("DisputeAssignee")
   rentAdjustments      RentAdjustment[]   @relation("AdjustmentLandlord")
   receivedNotifications Notification[]
   rentPaymentsAsPayer    RentPayment[]    @relation("PaymentPayer")
@@ -221,7 +191,6 @@ model Property {
   deletedAt     DateTime?
   landlord      User           @relation("PropertyLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
   agreements    TenancyAgreement[]
-  disputes      Dispute[]
   documents     SupportingDocument[]
 
   @@index([landlordId, status])
@@ -245,6 +214,9 @@ model TenancyAgreement {
   tenantSignedAt     DateTime?
   landlordSignedAt   DateTime?
   verifiedAt         DateTime?
+  initialPaymentAt   DateTime?
+  proposedEndDate    DateTime?
+  proposedMonthlyRent Decimal?       @db.Decimal(12, 2)
   terminatedAt       DateTime?
   terminationReason  String?         @db.Text
   utilities          String[]
@@ -253,7 +225,6 @@ model TenancyAgreement {
   property           Property        @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   landlord           User            @relation("AgreementLandlord", fields: [landlordId], references: [id], onDelete: Restrict)
   tenant             User            @relation("AgreementTenant", fields: [tenantId], references: [id], onDelete: Restrict)
-  disputes           Dispute[]
   rentAdjustments    RentAdjustment[]
   rentPayments       RentPayment[]
   penaltyNotices     PenaltyNotice[]
@@ -264,39 +235,6 @@ model TenancyAgreement {
   @@index([tenantId, status])
   @@index([startDate, endDate])
   @@index([createdAt])
-}
-
-model Dispute {
-  id             String        @id @default(cuid())
-  agreementId    String
-  propertyId     String
-  reporterId     String
-  respondentId   String
-  violationType  ViolationType
-  title          String
-  description    String        @db.Text
-  evidence       String[]
-  status         DisputeStatus @default(open)
-  priority       PriorityLevel @default(medium)
-  resolution     String?       @db.Text
-  assignedToId   String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  resolvedAt     DateTime?
-  agreement      TenancyAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
-  property       Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  reporter       User             @relation("DisputeReporter", fields: [reporterId], references: [id], onDelete: Restrict)
-  respondent     User             @relation("DisputeRespondent", fields: [respondentId], references: [id], onDelete: Restrict)
-  assignedTo     User?            @relation("DisputeAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  penaltyNotices PenaltyNotice[]
-  documents      SupportingDocument[]
-
-  @@index([agreementId, status])
-  @@index([propertyId, status])
-  @@index([reporterId, createdAt])
-  @@index([respondentId, createdAt])
-  @@index([assignedToId, status])
-  @@index([priority, status])
 }
 
 model RentAdjustment {
@@ -408,18 +346,15 @@ model SupportingDocument {
   uploadedAt       DateTime          @default(now())
   uploader         User              @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
   agreementId      String?
-  disputeId        String?
   propertyId       String?
   rentAdjustmentId String?
   agreement        TenancyAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
-  dispute          Dispute?          @relation(fields: [disputeId], references: [id], onDelete: SetNull)
   property         Property?         @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   rentAdjustment   RentAdjustment?   @relation(fields: [rentAdjustmentId], references: [id], onDelete: SetNull)
 
   @@index([uploaderId, uploadedAt])
   @@index([relatedEntityType, relatedEntityId])
   @@index([agreementId])
-  @@index([disputeId])
   @@index([propertyId])
   @@index([rentAdjustmentId])
 }
@@ -445,7 +380,6 @@ model PenaltyNotice {
   id          String        @id @default(cuid())
   issuedToId  String
   issuedById  String
-  disputeId   String?
   agreementId String?
   type        PenaltyType
   reason      String        @db.Text
@@ -456,12 +390,10 @@ model PenaltyNotice {
   updatedAt   DateTime      @updatedAt
   issuedTo    User          @relation("PenaltyIssuedTo", fields: [issuedToId], references: [id], onDelete: Restrict)
   issuedBy    User          @relation("PenaltyIssuer", fields: [issuedById], references: [id], onDelete: Restrict)
-  dispute     Dispute?      @relation(fields: [disputeId], references: [id], onDelete: SetNull)
   agreement   TenancyAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
 
   @@index([issuedToId, status])
   @@index([issuedById, issuedAt])
-  @@index([disputeId])
   @@index([agreementId])
 }
 

@@ -20,4 +20,8 @@ export const envValidationSchema = Joi.object({
   CHAPA_WEBHOOK_SECRET: Joi.string().optional(),
   CHAPA_RETURN_URL: Joi.string().uri().optional(),
   CHAPA_CALLBACK_URL: Joi.string().uri().optional(),
+  CLOUDINARY_CLOUD_NAME: Joi.string().required(),
+  CLOUDINARY_API_KEY: Joi.string().required(),
+  CLOUDINARY_API_SECRET: Joi.string().required(),
+  CLOUDINARY_FOLDER: Joi.string().default('house'),
 });
