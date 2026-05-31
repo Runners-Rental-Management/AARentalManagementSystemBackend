@@ -17,6 +17,7 @@ import { RentAdjustmentsModule } from './rent-adjustments/rent-adjustments.modul
 import { UsersModule } from './users/users.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { UploadModule } from './upload/upload.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -41,6 +42,8 @@ import { UploadModule } from './upload/upload.module';
     RentAdjustmentsModule,
     NotificationsModule,
     UploadModule,
+    PaymentsModule,
+    PricePredictionModule,
   ],
   controllers: [AppController],
   providers: [
