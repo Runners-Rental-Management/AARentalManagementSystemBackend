@@ -56,3 +56,10 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# ML service — generated/runtime files
+ml-service/.venv/
+ml-service/data/
+ml-service/models/
+ml-service/__pycache__/
+ml-service/*.pyc
