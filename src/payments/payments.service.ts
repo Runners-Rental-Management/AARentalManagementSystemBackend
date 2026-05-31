@@ -157,14 +157,14 @@ export class PaymentsService {
 
     const init = await this.chapa.initialize({
       amount: payment.amount.toString(),
-      email: payment.payer.email,
+      email: this.chapa.paymentEmail(payment.payer.email, payment.payer.id),
       first_name: payment.payer.firstName,
       last_name: payment.payer.lastName,
       ...(phone ? { phone_number: phone } : {}),
       tx_ref: txRef,
       customization: {
-        title: 'Rent Payment',
-        description: `Monthly rent for ${payment.agreement.property.title}`,
+        title: this.chapa.paymentTitle('Rent Payment'),
+        description: `Rent for ${payment.agreement.property.title}`.slice(0, 200),
       },
       meta: {
         rentPaymentId: payment.id,
@@ -247,9 +247,23 @@ export class PaymentsService {
   }
 
   private async finalizeChapaPayment(txRef: string) {
-    const payment = await this.prisma.rentPayment.findUnique({
-      where: { chapaTxRef: txRef },
-    });
+    let payment = null;
+    try {
+      payment = await this.prisma.rentPayment.findUnique({
+        where: { chapaTxRef: txRef },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to lookup payment by chapaTxRef: ${(error as Error).message}`);
+      payment = await this.prisma.rentPayment.findFirst({
+        where: { OR: [{ reference: txRef }, { chapaTxRef: txRef }] },
+      });
+    }
+
+    if (!payment) {
+      payment = await this.prisma.rentPayment.findFirst({
+        where: { OR: [{ reference: txRef }, { chapaTxRef: txRef }] },
+      });
+    }
 
     if (!payment) {
       this.logger.warn(`No rent payment found for tx_ref ${txRef}`);
@@ -337,11 +351,7 @@ export class PaymentsService {
     userId: string,
     role: UserRole,
   ) {
-    const authorityRoles: UserRole[] = [
-      UserRole.admin,
-      UserRole.system_admin,
-      UserRole.dara_agent,
-    ];
+    const authorityRoles: UserRole[] = [UserRole.admin];
 
     if (authorityRoles.includes(role)) {
       return;

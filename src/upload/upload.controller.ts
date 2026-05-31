@@ -12,6 +12,12 @@ import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { randomUUID } from 'crypto';
 
+type UploadedFile = {
+  filename: string;
+  mimetype: string;
+  originalname: string;
+};
+
 const UPLOAD_DIR = join(process.cwd(), 'uploads');
 
 // Ensure directory exists at module load time
@@ -53,7 +59,7 @@ export class UploadController {
     }),
   )
   uploadFiles(
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files: UploadedFile[],
     @Request() req: { protocol: string; get: (h: string) => string },
   ) {
     if (!files?.length) {
