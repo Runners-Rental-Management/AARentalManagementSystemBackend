@@ -5,14 +5,25 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import {
+  assertSubCityInScope,
+  getAdminLocationScope,
+  isAdminRole,
+  requireAdminLocationScope,
+  scopedPropertyWhere,
+} from '../auth/admin-location-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDisputeDto } from './dto/create-dispute.dto';
 import { ListDisputesDto } from './dto/list-disputes.dto';
 import { ReviewDisputeDto } from './dto/review-dispute.dto';
 
 @Injectable()
 export class DisputesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(userId: string, role: UserRole, dto: CreateDisputeDto) {
     const agreement = await this.prisma.tenancyAgreement.findUnique({
@@ -43,7 +54,7 @@ export class DisputesService {
 
     const respondentId = isLandlord ? agreement.tenantId : agreement.landlordId;
 
-    return this.prisma.dispute.create({
+    const dispute = await this.prisma.dispute.create({
       data: {
         agreementId: agreement.id,
         propertyId: agreement.propertyId,
@@ -61,7 +72,7 @@ export class DisputesService {
           select: { id: true, status: true, propertyId: true },
         },
         property: {
-          select: { id: true, title: true, address: true },
+          select: { id: true, title: true, address: true, subCity: true },
         },
         reporter: {
           select: { id: true, firstName: true, lastName: true, role: true },
@@ -71,19 +82,46 @@ export class DisputesService {
         },
       },
     });
+
+    // Notify respondent + admins
+    this.notifications
+      .adminIdsForSubCity(dispute.property.subCity)
+      .then((adminIds) => {
+        const payloads = [
+          {
+            userId: respondentId,
+            title: 'A dispute has been filed against you',
+            message: `A dispute titled "${dto.title}" has been filed regarding "${dispute.property.title}".`,
+            type: 'warning' as const,
+            category: 'dispute' as const,
+            link: `/dashboard/disputes/${dispute.id}`,
+          },
+          ...adminIds.map((aId) => ({
+            userId: aId,
+            title: 'New dispute filed',
+            message: `A new dispute "${dto.title}" was filed for a property in ${dispute.property.subCity}.`,
+            type: 'info' as const,
+            category: 'dispute' as const,
+            link: `/disputes/${dispute.id}`,
+          })),
+        ];
+        return this.notifications.notifyMany(payloads);
+      })
+      .catch(() => undefined);
+
+    return dispute;
   }
 
   async list(userId: string, role: UserRole, query: ListDisputesDto) {
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
     const where: Prisma.DisputeWhereInput = {
       ...(query.status ? { status: query.status } : {}),
       ...(query.violationType ? { violationType: query.violationType } : {}),
       ...(query.priority ? { priority: query.priority } : {}),
+      ...(adminScope ? { property: scopedPropertyWhere(adminScope) } : {}),
     };
 
-    const isAuthority =
-      role === UserRole.admin ||
-      role === UserRole.system_admin ||
-      role === UserRole.dara_agent;
+    const isAuthority = isAdminRole(role);
 
     if (!isAuthority) {
       where.OR = [{ reporterId: userId }, { respondentId: userId }];
@@ -99,7 +137,7 @@ export class DisputesService {
       orderBy: [{ createdAt: 'desc' }],
       include: {
         agreement: { select: { id: true, status: true } },
-        property: { select: { id: true, title: true, address: true } },
+        property: { select: { id: true, title: true, address: true, subCity: true } },
         reporter: {
           select: { id: true, firstName: true, lastName: true, role: true },
         },
@@ -129,7 +167,7 @@ export class DisputesService {
       where: { id },
       include: {
         agreement: { select: { id: true, status: true, propertyId: true } },
-        property: { select: { id: true, title: true, address: true } },
+        property: { select: { id: true, title: true, address: true, subCity: true } },
         reporter: {
           select: { id: true, firstName: true, lastName: true, role: true },
         },
@@ -146,35 +184,47 @@ export class DisputesService {
       throw new NotFoundException('Dispute not found');
     }
 
-    const isAuthority =
-      role === UserRole.admin ||
-      role === UserRole.system_admin ||
-      role === UserRole.dara_agent;
+    const isAuthority = isAdminRole(role);
     const isParty =
       dispute.reporterId === userId || dispute.respondentId === userId;
     if (!isAuthority && !isParty) {
       throw new ForbiddenException('You cannot access this dispute');
     }
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
+    if (adminScope) {
+      assertSubCityInScope(adminScope, dispute.property.subCity);
+    }
 
     return dispute;
   }
 
-  async review(id: string, actorRole: UserRole, dto: ReviewDisputeDto) {
-    const isAuthority =
-      actorRole === UserRole.admin ||
-      actorRole === UserRole.system_admin ||
-      actorRole === UserRole.dara_agent;
-    if (!isAuthority) {
+  async review(
+    id: string,
+    actorId: string,
+    actorRole: UserRole,
+    dto: ReviewDisputeDto,
+  ) {
+    if (!isAdminRole(actorRole)) {
       throw new ForbiddenException('Only authority users can review disputes');
     }
+    const adminScope = await requireAdminLocationScope(
+      this.prisma,
+      actorId,
+      actorRole,
+    );
 
     const dispute = await this.prisma.dispute.findUnique({
       where: { id },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        property: { select: { subCity: true } },
+      },
     });
     if (!dispute) {
       throw new NotFoundException('Dispute not found');
     }
+    assertSubCityInScope(adminScope, dispute.property.subCity);
 
     if (
       dispute.status === DisputeStatus.closed ||
@@ -191,10 +241,7 @@ export class DisputesService {
       if (!assignee || assignee.deletedAt) {
         throw new NotFoundException('Assigned user not found');
       }
-      const allowedAssignee =
-        assignee.role === UserRole.admin ||
-        assignee.role === UserRole.system_admin ||
-        assignee.role === UserRole.dara_agent;
+      const allowedAssignee = assignee.role === UserRole.admin;
       if (!allowedAssignee) {
         throw new UnprocessableEntityException(
           'Assigned user must be an authority user',
@@ -202,7 +249,7 @@ export class DisputesService {
       }
     }
 
-    return this.prisma.dispute.update({
+    const updated = await this.prisma.dispute.update({
       where: { id },
       data: {
         status: dto.status,
@@ -229,5 +276,29 @@ export class DisputesService {
         },
       },
     });
+
+    const statusLabel = dto.status.replace(/_/g, ' ');
+    this.notifications
+      .notifyMany([
+        {
+          userId: updated.reporterId,
+          title: `Dispute status updated`,
+          message: `Your dispute "${updated.title}" is now "${statusLabel}".${dto.resolution ? ' Resolution: ' + dto.resolution : ''}`,
+          type: dto.status === DisputeStatus.resolved ? 'success' : 'info',
+          category: 'dispute',
+          link: `/dashboard/disputes/${updated.id}`,
+        },
+        {
+          userId: updated.respondentId,
+          title: `Dispute status updated`,
+          message: `The dispute "${updated.title}" filed against you is now "${statusLabel}".`,
+          type: dto.status === DisputeStatus.resolved ? 'success' : 'info',
+          category: 'dispute',
+          link: `/dashboard/disputes/${updated.id}`,
+        },
+      ])
+      .catch(() => undefined);
+
+    return updated;
   }
 }

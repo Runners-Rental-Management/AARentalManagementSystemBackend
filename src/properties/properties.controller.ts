@@ -59,14 +59,15 @@ export class PropertiesController {
     return this.propertiesService.create(userId, role, dto);
   }
 
-  @Roles(UserRole.admin, UserRole.system_admin, UserRole.dara_agent)
+  @Roles(UserRole.admin)
   @Patch(':id/review')
   review(
     @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
     @CurrentUser('role') role: UserRole,
     @Body() dto: ReviewPropertyDto,
   ) {
-    return this.propertiesService.reviewProperty(id, role, dto);
+    return this.propertiesService.reviewProperty(id, userId, role, dto);
   }
 
   @Roles(UserRole.landlord)

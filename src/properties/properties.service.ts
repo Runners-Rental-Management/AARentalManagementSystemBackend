@@ -10,20 +10,30 @@ import {
   PropertyStatus,
   UserRole,
 } from '@prisma/client';
+import {
+  assertSubCityInScope,
+  getAdminLocationScope,
+  isAdminRole,
+  requireAdminLocationScope,
+  scopedPropertyWhere,
+} from '../auth/admin-location-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { ListPropertiesDto } from './dto/list-properties.dto';
 import { ReviewPropertyDto } from './dto/review-property.dto';
 
 @Injectable()
 export class PropertiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async findPublic(query: ListPropertiesDto) {
     const where: Prisma.PropertyWhereInput = {
       deletedAt: null,
       status: PropertyStatus.available,
-      isPostedToExplore: true,
       ...(query.propertyType ? { propertyType: query.propertyType } : {}),
       ...(query.subCity
         ? { subCity: { equals: query.subCity, mode: 'insensitive' } }
@@ -98,10 +108,28 @@ export class PropertiesService {
       },
     });
 
+    // Notify all admins who cover this sub-city
+    this.notifications
+      .adminIdsForSubCity(property.subCity)
+      .then((adminIds) =>
+        this.notifications.notifyMany(
+          adminIds.map((id) => ({
+            userId: id,
+            title: 'New property pending verification',
+            message: `"${property.title}" in ${property.subCity} requires review.`,
+            type: 'info' as const,
+            category: 'verification' as const,
+            link: `/properties/${property.id}`,
+          })),
+        ),
+      )
+      .catch(() => undefined);
+
     return property;
   }
 
   async findAll(userId: string, role: UserRole, query: ListPropertiesDto) {
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
     const baseWhere: Prisma.PropertyWhereInput = {
       deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
@@ -161,6 +189,13 @@ export class PropertiesService {
           ],
         },
       ];
+    } else if (adminScope) {
+      const existingAnd = Array.isArray(where.AND)
+        ? where.AND
+        : where.AND
+          ? [where.AND]
+          : [];
+      where.AND = [...existingAnd, scopedPropertyWhere(adminScope)];
     }
 
     const skip = (query.page - 1) * query.pageSize;
@@ -215,6 +250,11 @@ export class PropertiesService {
       throw new ForbiddenException('You cannot access this property');
     }
 
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
+    if (adminScope) {
+      assertSubCityInScope(adminScope, property.subCity);
+    }
+
     if (role === UserRole.tenant) {
       const hasAgreement = await this.prisma.tenancyAgreement.findFirst({
         where: {
@@ -241,23 +281,26 @@ export class PropertiesService {
     return property;
   }
 
-  async reviewProperty(id: string, role: UserRole, dto: ReviewPropertyDto) {
-    const isAuthority =
-      role === UserRole.admin ||
-      role === UserRole.system_admin ||
-      role === UserRole.dara_agent;
-    if (!isAuthority) {
+  async reviewProperty(
+    id: string,
+    userId: string,
+    role: UserRole,
+    dto: ReviewPropertyDto,
+  ) {
+    if (!isAdminRole(role)) {
       throw new ForbiddenException('Only authority users can review properties');
     }
+    const adminScope = await requireAdminLocationScope(this.prisma, userId, role);
 
     const property = await this.prisma.property.findUnique({
       where: { id },
-      select: { id: true, status: true, deletedAt: true },
+      select: { id: true, status: true, subCity: true, deletedAt: true },
     });
 
     if (!property || property.deletedAt) {
       throw new NotFoundException('Property not found');
     }
+    assertSubCityInScope(adminScope, property.subCity);
 
     if (property.status !== PropertyStatus.pending_verification) {
       throw new UnprocessableEntityException(
@@ -274,12 +317,19 @@ export class PropertiesService {
       );
     }
 
-    return this.prisma.property.update({
+    const approved = dto.status === PropertyStatus.available;
+
+    const updated = await this.prisma.property.update({
       where: { id },
       data: {
         status: dto.status,
-        verifiedAt:
-          dto.status === PropertyStatus.available ? new Date() : null,
+        verifiedAt: approved ? new Date() : null,
+        ...(approved
+          ? {
+              isPostedToExplore: true,
+              postedToExploreAt: new Date(),
+            }
+          : {}),
       },
       include: {
         landlord: {
@@ -294,6 +344,21 @@ export class PropertiesService {
         },
       },
     });
+
+    this.notifications
+      .notifyUser({
+        userId: updated.landlordId,
+        title: approved ? 'Property approved' : 'Property rejected',
+        message: approved
+          ? `Your property "${updated.title}" has been approved and is now listed on Explore.`
+          : `Your property "${updated.title}" was not approved. Please review and resubmit.`,
+        type: approved ? 'success' : 'warning',
+        category: 'verification',
+        link: `/dashboard/properties/${updated.id}`,
+      })
+      .catch(() => undefined);
+
+    return updated;
   }
 
   async postToExplore(id: string, userId: string, role: UserRole) {
