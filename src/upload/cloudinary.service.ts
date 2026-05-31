@@ -12,6 +12,13 @@ export type UploadedFileResult = {
   fileSize: number;
 };
 
+type MulterMemoryFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+};
+
 @Injectable()
 export class CloudinaryService {
   private readonly baseFolder: string;
@@ -33,7 +40,7 @@ export class CloudinaryService {
   }
 
   async uploadFile(
-    file: Express.Multer.File,
+    file: MulterMemoryFile,
     type: CloudinaryUploadType,
   ): Promise<UploadedFileResult> {
     const isPdf = file.mimetype === 'application/pdf';
@@ -76,7 +83,7 @@ export class CloudinaryService {
   }
 
   async uploadFiles(
-    files: Express.Multer.File[],
+    files: MulterMemoryFile[],
     type: CloudinaryUploadType,
   ): Promise<UploadedFileResult[]> {
     return Promise.all(files.map((file) => this.uploadFile(file, type)));

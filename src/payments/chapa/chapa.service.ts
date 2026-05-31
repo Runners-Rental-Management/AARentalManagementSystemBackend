@@ -62,6 +62,19 @@ export class ChapaService {
     return this.returnUrl;
   }
 
+  /** Chapa rejects some dev emails (e.g. *.local). Use a valid fallback. */
+  paymentEmail(email: string, userId: string): string {
+    if (email && !email.endsWith('.local') && email.includes('@')) {
+      return email;
+    }
+    return `payments+${userId}@aarental.et`;
+  }
+
+  /** Chapa title max 16 characters. */
+  paymentTitle(title: string): string {
+    return title.length <= 16 ? title : title.slice(0, 16);
+  }
+
   normalizePhone(phone: string): string | undefined {
     const digits = phone.replace(/\D/g, '');
     if (digits.length === 10 && /^0[79]/.test(digits)) {

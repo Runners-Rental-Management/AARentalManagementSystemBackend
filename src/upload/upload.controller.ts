@@ -13,6 +13,13 @@ import {
   type CloudinaryUploadType,
 } from './cloudinary.service';
 
+type UploadedFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+};
+
 const ALLOWED_MIME: Record<string, true> = {
   'image/jpeg': true,
   'image/jpg': true,
@@ -46,7 +53,7 @@ export class UploadController {
     }),
   )
   async uploadFiles(
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files: UploadedFile[],
     @Query('type') type?: string,
   ) {
     if (!files?.length) {
