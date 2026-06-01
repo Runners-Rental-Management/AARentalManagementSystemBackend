@@ -10,6 +10,8 @@ import {
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
+import { SkipOnboarding } from '../auth/skip-onboarding.decorator';
+import { PaymentsService } from '../payments/payments.service';
 import { AgreementsService } from './agreements.service';
 import { ConfirmAgreementPaymentDto } from './dto/confirm-agreement-payment.dto';
 import { CreateAgreementDto } from './dto/create-agreement.dto';
@@ -22,7 +24,10 @@ import { TerminateAgreementDto } from './dto/terminate-agreement.dto';
 
 @Controller('agreements')
 export class AgreementsController {
-  constructor(private readonly agreementsService: AgreementsService) {}
+  constructor(
+    private readonly agreementsService: AgreementsService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Roles(UserRole.landlord)
   @Post()
@@ -78,6 +83,16 @@ export class AgreementsController {
     @Body() dto: ReviewAgreementDto,
   ) {
     return this.agreementsService.reviewByAuthority(id, userId, role, dto);
+  }
+
+  @Roles(UserRole.tenant)
+  @SkipOnboarding()
+  @Post(':id/pay-with-chapa')
+  payWithChapa(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.paymentsService.initiateChapaAdvancePayment(id, userId);
   }
 
   @Roles(UserRole.tenant)
