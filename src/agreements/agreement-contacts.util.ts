@@ -40,6 +40,21 @@ export function isAgreementContactsUnlocked(
   return POST_VERIFICATION_STATUSES.includes(status);
 }
 
+/** Landlord/tenant: after verification. Authority officials: anytime they can view the agreement. */
+export function shouldExposeAgreementContacts(
+  verifiedAt: Date | null | undefined,
+  status: AgreementStatus,
+  options: { isAdmin: boolean; isParty: boolean },
+): boolean {
+  if (options.isAdmin) {
+    return true;
+  }
+  if (!options.isParty) {
+    return false;
+  }
+  return isAgreementContactsUnlocked(verifiedAt, status);
+}
+
 function partyContact(user: ContactUserFields): AgreementPartyContact {
   const fullName = `${user.firstName} ${user.lastName}`.trim();
   const address = user.address?.trim();

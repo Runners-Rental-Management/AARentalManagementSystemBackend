@@ -32,7 +32,7 @@ import { TerminateAgreementDto } from './dto/terminate-agreement.dto';
 import {
   buildAgreementContacts,
   formatAgreementDetailForClient,
-  isAgreementContactsUnlocked,
+  shouldExposeAgreementContacts,
 } from './agreement-contacts.util';
 
 const OPEN_AGREEMENT_STATUSES: AgreementStatus[] = [
@@ -432,11 +432,11 @@ export class AgreementsService {
       assertSubCityInScope(adminScope, agreement.property.subCity);
     }
 
-    const contactsUnlocked = isAgreementContactsUnlocked(
+    const exposeContacts = shouldExposeAgreementContacts(
       agreement.verifiedAt,
       agreement.status,
+      { isAdmin, isParty },
     );
-    const exposeContacts = contactsUnlocked && (isParty || isAdmin);
 
     return formatAgreementDetailForClient(agreement, exposeContacts);
   }
@@ -482,11 +482,12 @@ export class AgreementsService {
       assertSubCityInScope(adminScope, agreement.property.subCity);
     }
 
-    const contactsUnlocked = isAgreementContactsUnlocked(
+    const exposeContacts = shouldExposeAgreementContacts(
       agreement.verifiedAt,
       agreement.status,
+      { isAdmin, isParty },
     );
-    if (!contactsUnlocked) {
+    if (!exposeContacts) {
       return { contactsAvailable: false as const };
     }
 
