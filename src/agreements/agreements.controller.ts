@@ -53,6 +53,15 @@ export class AgreementsController {
     return this.agreementsService.listForUser(userId, role, query);
   }
 
+  @Get(':id/contacts')
+  getContacts(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: UserRole,
+  ) {
+    return this.agreementsService.getContactsById(id, userId, role);
+  }
+
   @Get(':id')
   getById(
     @Param('id') id: string,

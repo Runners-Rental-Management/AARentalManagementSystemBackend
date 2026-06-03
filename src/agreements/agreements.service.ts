@@ -29,6 +29,11 @@ import { RequestExtensionDto } from './dto/request-extension.dto';
 import { ReviewAgreementDto } from './dto/review-agreement.dto';
 import { ReviewPendingRequestDto } from './dto/review-pending-request.dto';
 import { TerminateAgreementDto } from './dto/terminate-agreement.dto';
+import {
+  buildAgreementContacts,
+  formatAgreementDetailForClient,
+  isAgreementContactsUnlocked,
+} from './agreement-contacts.util';
 
 const OPEN_AGREEMENT_STATUSES: AgreementStatus[] = [
   AgreementStatus.draft,
@@ -392,10 +397,22 @@ export class AgreementsService {
       include: {
         property: true,
         landlord: {
-          select: { id: true, firstName: true, lastName: true, email: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            address: true,
+          },
         },
         tenant: {
-          select: { id: true, firstName: true, lastName: true, email: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            address: true,
+          },
         },
       },
     });
@@ -415,7 +432,68 @@ export class AgreementsService {
       assertSubCityInScope(adminScope, agreement.property.subCity);
     }
 
-    return agreement;
+    const contactsUnlocked = isAgreementContactsUnlocked(
+      agreement.verifiedAt,
+      agreement.status,
+    );
+    const exposeContacts = contactsUnlocked && (isParty || isAdmin);
+
+    return formatAgreementDetailForClient(agreement, exposeContacts);
+  }
+
+  async getContactsById(id: string, userId: string, role: UserRole) {
+    const agreement = await this.prisma.tenancyAgreement.findUnique({
+      where: { id },
+      include: {
+        property: { select: { subCity: true } },
+        landlord: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            address: true,
+          },
+        },
+        tenant: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            address: true,
+          },
+        },
+      },
+    });
+
+    if (!agreement) {
+      throw new NotFoundException('Agreement not found');
+    }
+
+    const isAdmin = isAdminRole(role);
+    const isParty =
+      agreement.landlordId === userId || agreement.tenantId === userId;
+    if (!isAdmin && !isParty) {
+      throw new ForbiddenException('You cannot access this agreement');
+    }
+    const adminScope = await getAdminLocationScope(this.prisma, userId, role);
+    if (adminScope) {
+      assertSubCityInScope(adminScope, agreement.property.subCity);
+    }
+
+    const contactsUnlocked = isAgreementContactsUnlocked(
+      agreement.verifiedAt,
+      agreement.status,
+    );
+    if (!contactsUnlocked) {
+      return { contactsAvailable: false as const };
+    }
+
+    return {
+      contactsAvailable: true as const,
+      contacts: buildAgreementContacts(agreement.landlord, agreement.tenant),
+    };
   }
 
   async tenantSign(id: string, userId: string) {
